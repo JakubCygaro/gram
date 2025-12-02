@@ -1,16 +1,22 @@
 #include <stdlib.h>
 #include "gram.h"
-float gram_update(size_t t) {
-    return 10 + (float)(((int)t - 50) * ((int)t - 50) * ((int)t - 20));
+
+#define DIM 3
+#define TIME 100
+
+void gram_update(size_t t, float* ys) {
+    ys[0] = 10 +(float)((int)t * (int)t) * 2;
+    ys[1] = 10 +(float)((int)t * (int)t) * 3;
+    ys[2] = 10 +(float)((int)t * (int)t) * 4;
 }
 
 int gram_get_draw_type() {
-    return GRAM_DRAW_LINE;
+    return GRAM_DRAW_RECT;
 }
 
 size_t gram_get_time(){
-    return 100;
+    return TIME;
 }
 size_t gram_get_dimensions(){
-    return 1;
+    return DIM;
 }
