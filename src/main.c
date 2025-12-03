@@ -65,7 +65,7 @@ static void load_fns()
         dlclose(gram_update_lib);
     gram_update_lib = dlopen(gram_fns_file, RTLD_NOW);
     if (!gram_update_lib) {
-        fprintf(stderr, "Could not open `%s`\nError: %s\n", gram_fns_file_default, dlerror());
+        fprintf(stderr, "Could not open `%s`\nError: %s\n", gram_fns_file, dlerror());
     }
     GRAM_LOAD_FN(gram_update);
     GRAM_LOAD_FN(gram_get_draw_type);
@@ -98,8 +98,8 @@ static void update_data()
         }
     }
     s_full = s_max - s_min;
-    s_colw = (float)PLOT_W / s_time;
-    s_col_w_marg = s_colw * COL_MARGIN_PERCENT;
+    s_colw = ((float)PLOT_W ) / s_time;
+    s_col_w_marg = (s_colw * COL_MARGIN_PERCENT) / 2.;
     s_plot_center_off = (absf(s_min) / s_full) * PLOT_H;
 }
 
@@ -127,7 +127,7 @@ static void draw_data()
                 Rectangle r = {
                     .x = (0 + (i * s_colw) + s_col_w_marg) + PLOT_EXTERNAL_MARGIN_W,
                     .y = (PLOT_H - s_plot_center_off - adjust) + PLOT_EXTERNAL_MARGIN_H,
-                    .width = s_colw - s_col_w_marg,
+                    .width = s_colw - s_col_w_marg * 2,
                     .height = absf(screen_h),
                 };
                 DrawRectangleRec(r, RED);
