@@ -11,7 +11,7 @@ void gram_update(size_t t, float* ys) {
 }
 
 int gram_get_draw_type() {
-    return GRAM_DRAW_RECT;
+    return GRAM_DRAW_LINE;
 }
 
 size_t gram_get_time(){
@@ -20,3 +20,9 @@ size_t gram_get_time(){
 size_t gram_get_dimensions(){
     return DIM;
 }
+
+// GramColorScheme gram_get_color_scheme_fn(){
+//     return (GramColorScheme) {
+//         .colors_sz =
+//     };
+// }

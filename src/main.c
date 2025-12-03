@@ -12,20 +12,28 @@
 #define COL_MARGIN_PERCENT 0.20f
 #define EXTERNAL_MARGIN_PERCENT 0.1f
 
-#define GRAM_LOAD_FN(FN)                                                                                     \
-    FN = dlsym(gram_update_lib, FN##_fn_name);                                                               \
-    if (!FN) {                                                                                               \
-        fprintf(stderr, "Could not find function `%s` in `%s`\nError: %s\n", #FN, gram_fns_file, dlerror()); \
+#define GRAM_LOAD_FN(FN)                                                                                         \
+    FN = dlsym(gram_update_lib, FN##_fn_name);                                                                   \
+    if (!FN) {                                                                                                   \
+        TraceLog(LOG_ERROR, "Could not find function `%s` in `%s`\nError: %s\n", #FN, gram_fns_file, dlerror()); \
     }
 #define GRAM_DEFINE_FN(RET, NAME, ...)     \
     typedef RET (*NAME##_fn)(__VA_ARGS__); \
     static NAME##_fn NAME = NULL;          \
     static const char* NAME##_fn_name = #NAME
 
+const GramColorScheme GRAM_DEFAULT_CSCHEME = {
+    .colors_sz = 3,
+    .colors = {
+        GRAM_RED,
+        GRAM_GREEN,
+        GRAM_BLUE }
+};
 GRAM_DEFINE_FN(void, gram_update, size_t, float*);
 GRAM_DEFINE_FN(int, gram_get_draw_type);
 GRAM_DEFINE_FN(size_t, gram_get_time);
 GRAM_DEFINE_FN(size_t, gram_get_dimensions);
+GRAM_DEFINE_FN(GramColorScheme*, gram_get_color_scheme);
 
 const char* gram_fns_file_default = "./libgram_update.so";
 const float PLOT_H = HEIGHT * (1 - EXTERNAL_MARGIN_PERCENT);
@@ -45,6 +53,7 @@ static float s_full = 0;
 static float s_colw = 0;
 static float s_col_w_marg = 0;
 static float s_plot_center_off = 0;
+static const GramColorScheme* s_cscheme = &GRAM_DEFAULT_CSCHEME;
 
 float absf(float x)
 {
@@ -53,8 +62,8 @@ float absf(float x)
 
 static void load_fns()
 {
-    if(s_data){
-        for(size_t i = 0; i < s_time; i++){
+    if (s_data) {
+        for (size_t i = 0; i < s_time; i++) {
             free(s_data[i]);
         }
         free(s_data);
@@ -65,7 +74,7 @@ static void load_fns()
         dlclose(gram_update_lib);
     gram_update_lib = dlopen(gram_fns_file, RTLD_NOW);
     if (!gram_update_lib) {
-        fprintf(stderr, "Could not open `%s`\nError: %s\n", gram_fns_file, dlerror());
+        TraceLog(LOG_ERROR, "Could not open `%s`\nError: %s\n", gram_fns_file, dlerror());
     }
     GRAM_LOAD_FN(gram_update);
     GRAM_LOAD_FN(gram_get_draw_type);
@@ -77,9 +86,12 @@ static void load_fns()
     s_time = gram_get_time ? gram_get_time() : TIME;
 
     s_data = calloc(s_time, sizeof(float*));
-    for(size_t i = 0; i < s_time; i++){
+    for (size_t i = 0; i < s_time; i++) {
         s_data[i] = calloc(s_dim, sizeof(float));
     }
+
+    GRAM_LOAD_FN(gram_get_color_scheme);
+    s_cscheme = gram_get_color_scheme ? gram_get_color_scheme() ? gram_get_color_scheme() : &GRAM_DEFAULT_CSCHEME : &GRAM_DEFAULT_CSCHEME;
 }
 
 static void update_data()
@@ -97,8 +109,10 @@ static void update_data()
             s_max = fmax(s_data[t][d], s_max);
         }
     }
+    s_min *= 1.05;
+    s_max *= 1.05;
     s_full = s_max - s_min;
-    s_colw = ((float)PLOT_W ) / s_time;
+    s_colw = ((float)PLOT_W) / s_time;
     s_col_w_marg = (s_colw * COL_MARGIN_PERCENT) / 2.;
     s_plot_center_off = (absf(s_min) / s_full) * PLOT_H;
 }
@@ -121,6 +135,7 @@ static void draw_data()
             float v = s_data[i][d];
             float screen_h = (v / s_full) * PLOT_H;
             float adjust = v > 0 ? screen_h : 0;
+            GramColor color = s_cscheme->colors[d % s_cscheme->colors_sz];
 
             switch (s_draw_type) {
             case GRAM_DRAW_RECT: {
@@ -130,16 +145,16 @@ static void draw_data()
                     .width = s_colw - s_col_w_marg * 2,
                     .height = absf(screen_h),
                 };
-                DrawRectangleRec(r, RED);
+                DrawRectangleRec(r, (Color) { color.r, color.g, color.b, color.a });
             } break;
             case GRAM_DRAW_LINE: {
                 Vector2 center = {
                     .x = (0 + (i * s_colw) + (s_colw / 2.0)) + PLOT_EXTERNAL_MARGIN_W,
                     .y = PLOT_H - s_plot_center_off + PLOT_EXTERNAL_MARGIN_H - screen_h
                 };
-                DrawCircleV(center, 1.0f, RED);
+                DrawCircleV(center, 1.0f, (Color) { color.r, color.g, color.b, color.a });
                 if (i > 0) {
-                    DrawLineV(prev_c[d], center, RED);
+                    DrawLineV(prev_c[d], center, (Color) { color.r, color.g, color.b, color.a });
                 }
                 prev_c[d] = center;
             } break;
