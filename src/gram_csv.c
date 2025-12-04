@@ -28,17 +28,18 @@ typedef struct CSVFile {
     double** columns;
 } CSVFile;
 
-void csv_file_free(CSVFile csv){
-    if(csv.file_name){
+void csv_file_free(CSVFile csv)
+{
+    if (csv.file_name) {
         free(csv.file_name);
     }
-    for(size_t i = 0; i < csv.header_count; i++){
-        if(csv.headers[i]){
+    for (size_t i = 0; i < csv.header_count; i++) {
+        if (csv.headers[i]) {
             free(csv.headers[i]);
         }
     }
-    for(size_t i = 0; i < csv.col_count; i++){
-        if(csv.columns[i]){
+    for (size_t i = 0; i < csv.col_count; i++) {
+        if (csv.columns[i]) {
             free(csv.columns[i]);
         }
     }
@@ -53,15 +54,18 @@ void line_free(line_t l, size_t l_sz)
         free(l[i]);
     }
 }
+static size_t line_count = 0;
 
-char* read_quoted(FILE* f)
+char* read_quoted(FILE* f, size_t* line_len)
 {
+    size_t start = *line_len;
     int closed = 0;
     size_t buf_p = 0;
     size_t buf_sz = 512;
     char* buf = calloc(buf_sz, sizeof(char));
     int c = 0;
     while ((c = fgetc(f)) != EOF) {
+        (*line_len)++;
         // if quote is in the middle of the field
         if (c == QUOTE) {
             c = getc(f);
@@ -72,17 +76,18 @@ char* read_quoted(FILE* f)
             if (c == NEWLINE || c == COMMA || c == CARRIAGERETURN) {
                 closed = 1;
                 ungetc(c, f);
+                (*line_len)--;
                 break;
             } else {
-                fprintf(stderr, "Improper usage of quote\n");
+                fprintf(stderr, "Improper usage of quote (%ld:%ld)\n", line_count, *line_len);
                 exit(-1);
             }
         } else {
             BUF_PUSH(c, buf, buf_p, buf_sz, char);
         }
     }
-    if(!closed){
-        fprintf(stderr, "Unclosed quotation\n");
+    if (!closed) {
+        fprintf(stderr, "Unclosed quotation (%ld:%ld)\n", line_count, start);
         exit(-1);
     }
     char* ret = calloc(buf_p + 1, sizeof(char));
@@ -91,9 +96,7 @@ char* read_quoted(FILE* f)
     return ret;
 }
 
-
 static int IS_EOF = 0;
-static size_t line_count = 0;
 
 line_t read_line(FILE* f, size_t* size)
 {
@@ -112,8 +115,9 @@ line_t read_line(FILE* f, size_t* size)
 
     while (1) {
         c = fgetc(f);
+        line_len++;
         if (quoted && (c != COMMA && c != NEWLINE && c != CARRIAGERETURN && c != EOF)) {
-            fprintf(stderr, "Improper quoting in field\n");
+            fprintf(stderr, "Improper quoting in field (%ld:%ld)\n", line_count, line_len);
             exit(-1);
         } else if (quoted && c == COMMA) {
             quoted = 0;
@@ -124,7 +128,7 @@ line_t read_line(FILE* f, size_t* size)
         } else if (quoted && c == CARRIAGERETURN) {
             c = fgetc(f);
             if (c != NEWLINE) {
-                fprintf(stderr, "Line ending not proper CRLF (CR present, but LF missing)\n");
+                fprintf(stderr, "Line ending not proper CRLF (CR present, but LF missing) (%ld:%ld)\n", line_count, line_len);
                 exit(-1);
             }
             quoted = 0;
@@ -140,7 +144,7 @@ line_t read_line(FILE* f, size_t* size)
             continue;
         }
         if (c == NEWLINE || c == EOF) {
-            if (line_len > 0) {
+            if (line_len-1 > 0) {
                 char* field = calloc(buf_p + 1, sizeof(char));
                 memcpy(field, buf, buf_p);
                 memset(buf, 0, buf_p * sizeof(char));
@@ -152,10 +156,10 @@ line_t read_line(FILE* f, size_t* size)
         if (c == CARRIAGERETURN) {
             c = fgetc(f);
             if (c != NEWLINE) {
-                fprintf(stderr, "Line ending not proper CRLF (CR present, but LF missing)\n");
+                fprintf(stderr, "Line ending not proper CRLF (CR present, but LF missing) (%ld:%ld)\n", line_count, line_len);
                 exit(-1);
             }
-            if (line_len > 0) {
+            if (line_len-1 > 0) {
                 char* field = calloc(buf_p + 1, sizeof(char));
                 memcpy(field, buf, buf_p);
                 memset(buf, 0, buf_p * sizeof(char));
@@ -166,16 +170,15 @@ line_t read_line(FILE* f, size_t* size)
         }
         // if quote is at the start of the field
         if (c == QUOTE && buf_p == 0) {
-            char* field = read_quoted(f);
+            char* field = read_quoted(f, &line_len);
             BUF_PUSH(field, fbuf, fbuf_p, fbuf_sz, char*);
             quoted = 1;
             continue;
         } else if (c == QUOTE && buf > 0) {
-            fprintf(stderr, "Quote start inside of field\n");
+            fprintf(stderr, "Quote start inside of field (%ld:%ld)\n", line_count, line_len);
             exit(-1);
         }
         BUF_PUSH(c, buf, buf_p, buf_sz, char);
-        line_len++;
     }
     line_count++;
     IS_EOF = c == EOF;
@@ -226,7 +229,8 @@ CSVFile parse_csv(FILE* csv)
         }
         if (line) {
             if (fields != fields_per_record) {
-                fprintf(stderr, "Mismatch between the number of fields in line and the number of headers\n");
+                fprintf(stderr, "Mismatch between the number (%ld) of fields in line (%ld) and the number of headers (%ld)\n",
+                        line_count, fields,fields_per_record);
                 exit(-1);
             }
             for (size_t i = 0; i < fields; i++) {
@@ -240,7 +244,7 @@ CSVFile parse_csv(FILE* csv)
                     ret.columns[i] = realloc(ret.columns[i], cbuf_sz * sizeof(double));
                 }
                 ret.columns[i][cbuf_p] = v;
-                if(i == fields - 1)
+                if (i == fields - 1)
                     cbuf_p++;
             }
             line_free(line, fields);
@@ -250,12 +254,13 @@ CSVFile parse_csv(FILE* csv)
     return ret;
 }
 
-char* get_file_name(const char* path){
+char* get_file_name(const char* path)
+{
     size_t len = strlen(path);
     size_t i = len;
-    for(; i >= 1; i--){
-        char c = path[i-1];
-        if(c == '\\' || c == '/'){
+    for (; i >= 1; i--) {
+        char c = path[i - 1];
+        if (c == '\\' || c == '/') {
             break;
         }
     }
@@ -264,61 +269,69 @@ char* get_file_name(const char* path){
     return n;
 }
 
-char* sanitize_guard(const char* str){
-    if(!str) return NULL;
+char* sanitize_guard(const char* str)
+{
+    if (!str)
+        return NULL;
     size_t len = strlen(str);
-    if(len == 0){
+    if (len == 0) {
         return NULL;
     }
     char* n_next = calloc(len + 1, sizeof(char));
     size_t i = 0;
-    while(i < len){
+    while (i < len) {
         char c = str[i];
-        if (c == '.') break;
-        if (!isalnum(c)){
+        if (c == '.')
+            break;
+        if (!isalnum(c)) {
             n_next[i] = '_';
         } else {
             n_next[i] = toupper(str[i]);
         }
         i++;
     }
-    if(i == 0) return NULL;
+    if (i == 0)
+        return NULL;
     return n_next;
 }
-char* sanitize_header(const char* str){
-    if(!str) return NULL;
+char* sanitize_header(const char* str)
+{
+    if (!str)
+        return NULL;
     size_t len = strlen(str);
-    if(len == 0){
+    if (len == 0) {
         return NULL;
     }
     char* head = calloc(len + 1, sizeof(char));
     size_t i = 0;
-    while(i < len){
+    while (i < len) {
         char c = str[i];
-        if (!isalnum(c) || isspace(c)){
+        if (!isalnum(c) || isspace(c)) {
             head[i] = '_';
         } else {
             head[i] = tolower(str[i]);
         }
         i++;
     }
-    if(i == 0) return NULL;
+    if (i == 0)
+        return NULL;
     return head;
 }
 
-void write_header_file(CSVFile* csv, FILE* f){
+void write_header_file(CSVFile* csv, FILE* f)
+{
     char* guard = sanitize_guard(csv->file_name);
     guard = guard ? guard : "UNNAMED";
     fprintf(f, "#ifndef _%s_DATASET_H\n"
-            "#define _%s_DATASET_H\n",
-            guard, guard);
+               "#define _%s_DATASET_H\n",
+        guard, guard);
 
-    //define the struct
+    // define the struct
     fprintf(f, "struct _gram_dataset_%s {\n", guard);
     fprintf(f, "\t unsigned long column_count;\n");
     fprintf(f, "\t unsigned long data_count;\n");
 
-    for(size_t h = 0; h < csv->header_count; h++){
+    for (size_t h = 0; h < csv->header_count; h++) {
         char* header = sanitize_header(csv->headers[h]);
         fprintf(f, "\t double h%s[%ld];\n", header, csv->col_len);
         free(header);
@@ -327,14 +340,14 @@ void write_header_file(CSVFile* csv, FILE* f){
 
     fprintf(f, "\t .column_count = %ld,\n", csv->col_count);
     fprintf(f, "\t .data_count = %ld,\n", csv->col_len);
-    //initialize columns
-    for(size_t h = 0; h < csv->header_count; h++){
+    // initialize columns
+    for (size_t h = 0; h < csv->header_count; h++) {
         char* header = sanitize_header(csv->headers[h]);
         fprintf(f, "\t .h%s = {\n\t\t", header);
         free(header);
-        for(size_t i = 0; i < csv->col_len; i++){
-            fprintf(f, "%lf", csv->columns[h][i] );
-            if(i != csv->col_len - 1){
+        for (size_t i = 0; i < csv->col_len; i++) {
+            fprintf(f, "%lf", csv->columns[h][i]);
+            if (i != csv->col_len - 1) {
                 fprintf(f, ", ");
             }
         }
@@ -346,7 +359,8 @@ void write_header_file(CSVFile* csv, FILE* f){
     fprintf(f, "#endif\n");
 }
 
-void print_csv(CSVFile* csv){
+void print_csv(CSVFile* csv)
+{
     printf("gram_csv\n");
     printf("CSV file: `%s`\n", csv->file_name);
     printf("Fields per record: %ld\n", csv->header_count);
@@ -382,10 +396,10 @@ int main(int argc, char** args)
     fclose(in_file);
     csv.file_name = get_file_name(in_path);
 
-    if(!out_path_a || plap_get_option(&a, "p", "print")){
+    if (!out_path_a || plap_get_option(&a, "p", "print")) {
         print_csv(&csv);
     }
-    if(out_path_a){
+    if (out_path_a) {
         FILE* out_file = fopen(out_path_a->str, "w");
         write_header_file(&csv, out_file);
         fclose(out_file);
