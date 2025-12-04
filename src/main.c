@@ -189,8 +189,8 @@ static void draw()
 int main(int argc, char** args)
 {
     ArgsDef d = plap_args_def();
-    plap_option_string(&d, "s", "so", 0);
-    plap_option_string(&d, "l", "lua", 0);
+    plap_option_string(&d, "s", "so", 1);
+    plap_option_string(&d, "l", "lua", 1);
     Args a = plap_parse_args(d, argc, args);
 
     Option* so = plap_get_option(&a, "s", "so");
@@ -198,23 +198,27 @@ int main(int argc, char** args)
     if(so && lua){
         fprintf(stderr, "Conflicting options `lua` and `so` (only one permitted)\n");
         exit(-1);
-    }
+    } else if (so){
+        gram_fns_file = so->str;
+        InitWindow(WIDHT, HEIGHT, "gram");
+        SetTargetFPS(60);
+        load();
+        update_data();
+        while (!WindowShouldClose()) {
+            update();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            draw();
+            EndDrawing();
+        }
+        CloseWindow();
+        if (gram_update_lib)
+            dlclose(gram_update_lib);
+    } else if(lua){
+        fprintf(stderr, "WIP\n");
+    } else {
 
-
-    InitWindow(WIDHT, HEIGHT, "gram");
-    SetTargetFPS(60);
-    load();
-    update_data();
-    while (!WindowShouldClose()) {
-        update();
-        BeginDrawing();
-        ClearBackground(BLACK);
-        draw();
-        EndDrawing();
     }
-    CloseWindow();
-    if (gram_update_lib)
-        dlclose(gram_update_lib);
     plap_free_args(a);
     return 0;
 }
