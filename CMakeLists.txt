@@ -29,13 +29,27 @@ FetchContent_MakeAvailable(gitplap)
 include_directories(${gitplap_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
+find_package(Lua)
+
+if(Lua_FOUND AND NOT TARGET Lua::Lua)
+  add_library(Lua::Lua INTERFACE IMPORTED)
+  set_target_properties(
+    Lua::Lua
+    PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${LUA_INCLUDE_DIR}"
+      INTERFACE_LINK_LIBRARIES "${LUA_LIBRARIES}"
+  )
+endif()
+
 add_executable(gram
     ${CMAKE_SOURCE_DIR}/src/main.c
+    ${CMAKE_SOURCE_DIR}/src/loadfns.c
 )
 
 target_link_libraries(gram
     PRIVATE raylib
     PRIVATE -lm
+    PRIVATE Lua::Lua
 )
 
 add_executable(gram_csv

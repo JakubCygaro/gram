@@ -1,26 +1,20 @@
 #include "gram.h"
+#include "loadfns.h"
+#define PLAP_IMPLEMENTATION
+#include "plap.h"
 #include <dlfcn.h>
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #define WIDHT 1000
 #define HEIGHT 800
 #define TIME 100
 #define DIM 1
 #define COL_MARGIN_PERCENT 0.20f
 #define EXTERNAL_MARGIN_PERCENT 0.1f
-
-#define GRAM_LOAD_FN(FN)                                                                                         \
-    FN = dlsym(gram_update_lib, FN##_fn_name);                                                                   \
-    if (!FN) {                                                                                                   \
-        TraceLog(LOG_ERROR, "Could not find function `%s` in `%s`\nError: %s\n", #FN, gram_fns_file, dlerror()); \
-    }
-#define GRAM_DEFINE_FN(RET, NAME, ...)     \
-    typedef RET (*NAME##_fn)(__VA_ARGS__); \
-    static NAME##_fn NAME = NULL;          \
-    static const char* NAME##_fn_name = #NAME
 
 const GramColorScheme GRAM_DEFAULT_CSCHEME = {
     .colors_sz = 3,
@@ -29,11 +23,6 @@ const GramColorScheme GRAM_DEFAULT_CSCHEME = {
         GRAM_GREEN,
         GRAM_BLUE }
 };
-GRAM_DEFINE_FN(void, gram_update, size_t, float*);
-GRAM_DEFINE_FN(int, gram_get_draw_type);
-GRAM_DEFINE_FN(size_t, gram_get_time);
-GRAM_DEFINE_FN(size_t, gram_get_dimensions);
-GRAM_DEFINE_FN(GramColorScheme*, gram_get_color_scheme);
 
 const char* gram_fns_file_default = "./libgram_update.so";
 const float PLOT_H = HEIGHT * (1 - EXTERNAL_MARGIN_PERCENT);
@@ -55,12 +44,14 @@ static float s_col_w_marg = 0;
 static float s_plot_center_off = 0;
 static const GramColorScheme* s_cscheme = &GRAM_DEFAULT_CSCHEME;
 
+static GramExtFns gram_ext_fns = { 0 };
+
 float absf(float x)
 {
     return x < 0 ? -x : x;
 }
 
-static void load_fns()
+static void load()
 {
     if (s_data) {
         for (size_t i = 0; i < s_time; i++) {
@@ -69,40 +60,33 @@ static void load_fns()
         free(s_data);
         s_data = NULL;
     }
+    load_from_so(gram_fns_file, &gram_ext_fns);
+    GramExtFns* ext = &gram_ext_fns;
 
-    if (gram_update_lib)
-        dlclose(gram_update_lib);
-    gram_update_lib = dlopen(gram_fns_file, RTLD_NOW);
-    if (!gram_update_lib) {
-        TraceLog(LOG_ERROR, "Could not open `%s`\nError: %s\n", gram_fns_file, dlerror());
-    }
-    GRAM_LOAD_FN(gram_update);
-    GRAM_LOAD_FN(gram_get_draw_type);
-    if (gram_get_draw_type)
-        s_draw_type = gram_get_draw_type();
-    GRAM_LOAD_FN(gram_get_dimensions);
-    s_dim = gram_get_dimensions ? gram_get_dimensions() : DIM;
-    GRAM_LOAD_FN(gram_get_time);
-    s_time = gram_get_time ? gram_get_time() : TIME;
+    if (ext->gram_get_draw_type)
+        s_draw_type = ext->gram_get_draw_type();
+
+    s_dim = ext->gram_get_dimensions ? ext->gram_get_dimensions() : DIM;
+
+    s_time = ext->gram_get_time ? ext->gram_get_time() : TIME;
 
     s_data = calloc(s_time, sizeof(float*));
     for (size_t i = 0; i < s_time; i++) {
         s_data[i] = calloc(s_dim, sizeof(float));
     }
 
-    GRAM_LOAD_FN(gram_get_color_scheme);
-    s_cscheme = gram_get_color_scheme ? gram_get_color_scheme() ? gram_get_color_scheme() : &GRAM_DEFAULT_CSCHEME : &GRAM_DEFAULT_CSCHEME;
+    s_cscheme = ext->gram_get_color_scheme ? ext->gram_get_color_scheme() ? ext->gram_get_color_scheme() : &GRAM_DEFAULT_CSCHEME : &GRAM_DEFAULT_CSCHEME;
 }
 
 static void update_data()
 {
-    if (!gram_update)
+    if (!gram_ext_fns.gram_update)
         return;
     s_min = 0;
     s_max = 0;
 
     for (size_t t = 0; t < s_time; t++) {
-        gram_update(t, s_data[t]);
+        gram_ext_fns.gram_update(t, s_data[t]);
 
         for (size_t d = 0; d < s_dim; d++) {
             s_min = fmin(s_data[t][d], s_min);
@@ -121,7 +105,7 @@ static void update()
 {
     if (IsKeyReleased(KEY_R)) {
         TraceLog(LOG_INFO, "RELOADING");
-        load_fns();
+        load();
         update_data();
     }
 }
@@ -177,7 +161,7 @@ static void draw_plot_region()
         .height = HEIGHT - PLOT_EXTERNAL_MARGIN_H * 2
     };
     DrawRectangleRec(plot_area, BLACK);
-    if (gram_update)
+    if (gram_ext_fns.gram_update)
         draw_data();
 }
 
@@ -186,7 +170,7 @@ static void draw_legend_region()
     ClearBackground(WHITE);
 
     static const char* zero = "0";
-    if (gram_update) {
+    if (gram_ext_fns.gram_update) {
         Vector2 sz = MeasureTextEx(GetFontDefault(), zero, 24, 10);
         Vector2 pos = {
             .x = PLOT_EXTERNAL_MARGIN_W - sz.x * 1.5,
@@ -204,17 +188,22 @@ static void draw()
 
 int main(int argc, char** args)
 {
-    if (argc == 2) {
-        gram_fns_file = args[1];
-    } else if (argc == 1) {
-        gram_fns_file = (char*)gram_fns_file_default;
-    } else {
-        fprintf(stderr, "Error: too many arguments\n");
-        return -1;
+    ArgsDef d = plap_args_def();
+    plap_option_string(&d, "s", "so", 0);
+    plap_option_string(&d, "l", "lua", 0);
+    Args a = plap_parse_args(d, argc, args);
+
+    Option* so = plap_get_option(&a, "s", "so");
+    Option* lua = plap_get_option(&a, "l", "lua");
+    if(so && lua){
+        fprintf(stderr, "Conflicting options `lua` and `so` (only one permitted)\n");
+        exit(-1);
     }
+
+
     InitWindow(WIDHT, HEIGHT, "gram");
     SetTargetFPS(60);
-    load_fns();
+    load();
     update_data();
     while (!WindowShouldClose()) {
         update();
@@ -226,5 +215,6 @@ int main(int argc, char** args)
     CloseWindow();
     if (gram_update_lib)
         dlclose(gram_update_lib);
+    plap_free_args(a);
     return 0;
 }
