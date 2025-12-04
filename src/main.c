@@ -1,13 +1,17 @@
-#include "gram.h"
-#include "loadfns.h"
-#define PLAP_IMPLEMENTATION
-#include "plap.h"
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
 #include <dlfcn.h>
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "gram.h"
+#include "loadfns.h"
+#define PLAP_IMPLEMENTATION
+#include "plap.h"
 
 #define WIDHT 1000
 #define HEIGHT 800
@@ -33,7 +37,8 @@ const float PLOT_EXTERNAL_MARGIN_H = HEIGHT * EXTERNAL_MARGIN_PERCENT / 2.;
 static size_t s_time = TIME;
 static size_t s_dim = DIM;
 static void* gram_update_lib = NULL;
-static char* gram_fns_file = "";
+static char* gram_so_file = NULL;
+static char* gram_lua_file = NULL;
 static float** s_data = NULL;
 static float s_min = 0;
 static float s_max = 0;
@@ -45,6 +50,7 @@ static float s_plot_center_off = 0;
 static const GramColorScheme* s_cscheme = &GRAM_DEFAULT_CSCHEME;
 
 static GramExtFns gram_ext_fns = { 0 };
+static lua_State* lua_state = { 0 };
 
 float absf(float x)
 {
@@ -60,7 +66,11 @@ static void load()
         free(s_data);
         s_data = NULL;
     }
-    load_from_so(gram_fns_file, &gram_ext_fns);
+    if(gram_so_file){
+        load_from_so(gram_so_file, &gram_ext_fns);
+    } else if(lua_state){
+        load_from_lua(gram_lua_file, lua_state, &gram_ext_fns);
+    }
     GramExtFns* ext = &gram_ext_fns;
 
     if (ext->gram_get_draw_type)
@@ -199,26 +209,29 @@ int main(int argc, char** args)
         fprintf(stderr, "Conflicting options `lua` and `so` (only one permitted)\n");
         exit(-1);
     } else if (so){
-        gram_fns_file = so->str;
-        InitWindow(WIDHT, HEIGHT, "gram");
-        SetTargetFPS(60);
-        load();
-        update_data();
-        while (!WindowShouldClose()) {
-            update();
-            BeginDrawing();
-            ClearBackground(BLACK);
-            draw();
-            EndDrawing();
-        }
-        CloseWindow();
-        if (gram_update_lib)
-            dlclose(gram_update_lib);
+        gram_so_file = so->str;
     } else if(lua){
-        fprintf(stderr, "WIP\n");
-    } else {
-
+        gram_lua_file = lua->str;
+        lua_state = luaL_newstate();
+        luaL_openlibs(lua_state);
     }
+    InitWindow(WIDHT, HEIGHT, "gram");
+    SetTargetFPS(60);
+    load();
+    update_data();
+    while (!WindowShouldClose()) {
+        update();
+        BeginDrawing();
+        ClearBackground(BLACK);
+        draw();
+        EndDrawing();
+    }
+    CloseWindow();
+    if (gram_ext_fns.lib)
+        dlclose(gram_ext_fns.lib);
+    if(lua_state)
+        lua_close(lua_state);
+
     plap_free_args(a);
     return 0;
 }

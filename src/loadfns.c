@@ -1,9 +1,13 @@
 #include "loadfns.h"
 #include <dlfcn.h>
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
 #include <raylib.h>
 #include <raymath.h>
 
-void load_from_so(const char* p, GramExtFns* fns){
+void load_from_so(const char* p, GramExtFns* fns)
+{
     if (fns->lib)
         dlclose(fns->lib);
     fns->lib = dlopen(p, RTLD_NOW);
@@ -28,6 +32,10 @@ void load_from_so(const char* p, GramExtFns* fns){
     _LOAD_ERR(fns->gram_get_color_scheme, gram_get_color_scheme, p);
 }
 
-void load_from_lua(const char* src, lua_State* l, GramExtFns* fns){
-
+void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
+{
+    if (luaL_loadfile(l, src) || lua_pcall(l, 0, 0, 0)) {
+        TraceLog(LOG_ERROR, "Cannot run configuration file: %s",
+            lua_tostring(l, -1));
+    }
 }
