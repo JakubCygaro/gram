@@ -1,13 +1,12 @@
 #include <stdlib.h>
+#include "ceny.h"
 #include "gram.h"
 
-#define DIM 3
+#define DIM 1
 #define TIME 100
 
 void gram_update(size_t t, float* ys) {
-    ys[0] = 10 +(float)((int)t * (int)t) * 2;
-    ys[1] = 10 +(float)((int)t * (int)t) * 3;
-    ys[2] = 10 +(float)((int)t * (int)t) * 4;
+    ys[0] = DCENY.hrok[t] - 100.0;
 }
 
 int gram_get_draw_type() {
@@ -15,10 +14,10 @@ int gram_get_draw_type() {
 }
 
 size_t gram_get_time(){
-    return TIME;
+    return DCENY.data_count;
 }
 size_t gram_get_dimensions(){
-    return DIM;
+    return DCENY.column_count;
 }
 
 // GramColorScheme gram_get_color_scheme_fn(){

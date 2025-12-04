@@ -5,6 +5,20 @@
 #define PLAP_IMPLEMENTATION
 #include "plap.h"
 
+#define BUF_PUSH(VAL, BUF, BUFPTR, SIZE, OFTYPE)   \
+    if (BUFPTR + 1 >= SIZE) {                      \
+        SIZE *= 2;                                 \
+        BUF = realloc(BUF, SIZE * sizeof(OFTYPE)); \
+    }                                              \
+    BUF[BUFPTR++] = VAL
+
+#define READFIELD 1
+#define READQUOTED 2
+#define COMMA ','
+#define QUOTE '"'
+#define NEWLINE '\n'
+#define CARRIAGERETURN '\r'
+
 typedef struct CSVFile {
     char* file_name;
     size_t header_count;
@@ -14,19 +28,31 @@ typedef struct CSVFile {
     double** columns;
 } CSVFile;
 
-#define READFIELD 1
-#define READQUOTED 2
-#define COMMA ','
-#define QUOTE '"'
-#define NEWLINE '\n'
-#define CARRIAGERETURN '\r'
+void csv_file_free(CSVFile csv){
+    if(csv.file_name){
+        free(csv.file_name);
+    }
+    for(size_t i = 0; i < csv.header_count; i++){
+        if(csv.headers[i]){
+            free(csv.headers[i]);
+        }
+    }
+    for(size_t i = 0; i < csv.col_count; i++){
+        if(csv.columns[i]){
+            free(csv.columns[i]);
+        }
+    }
+    free(csv.columns);
+}
 
-#define BUF_PUSH(VAL, BUF, BUFPTR, SIZE, OFTYPE)   \
-    if (BUFPTR + 1 >= SIZE) {                      \
-        SIZE *= 2;                                 \
-        BUF = realloc(BUF, SIZE * sizeof(OFTYPE)); \
-    }                                              \
-    BUF[BUFPTR++] = VAL
+typedef char** line_t;
+
+void line_free(line_t l, size_t l_sz)
+{
+    for (size_t i = 0; i < l_sz; i++) {
+        free(l[i]);
+    }
+}
 
 char* read_quoted(FILE* f)
 {
@@ -65,14 +91,6 @@ char* read_quoted(FILE* f)
     return ret;
 }
 
-typedef char** line_t;
-
-void line_free(line_t l, size_t l_sz)
-{
-    for (size_t i = 0; i < l_sz; i++) {
-        free(l[i]);
-    }
-}
 
 static int IS_EOF = 0;
 static size_t line_count = 0;
@@ -246,35 +264,134 @@ char* get_file_name(const char* path){
     return n;
 }
 
-int main(int argc, char** args)
-{
-    ArgsDef adef = plap_args_def();
-    plap_positional_string(&adef, "input-csv-file-path");
-    plap_positional_string(&adef, "output-header-file-path");
-    Args a = plap_parse_args(adef, argc, args);
-
-    char* in_path = plap_get_positional(&a, 0)->str;
-    char* out_path = plap_get_positional(&a, 1)->str;
-
-    FILE* in_file = fopen(in_path, "r");
-    CSVFile csv = parse_csv(in_file);
-    csv.file_name = get_file_name(in_path);
-
-    printf("CSV file: %s\n", csv.file_name);
-    printf("fields per record: %ld\n", csv.header_count);
-    printf("headers\n");
-    for (size_t i = 0; i < csv.header_count; i++) {
-        printf("`%s`\t", csv.headers[i]);
+char* sanitize_guard(const char* str){
+    if(!str) return NULL;
+    size_t len = strlen(str);
+    if(len == 0){
+        return NULL;
     }
-    printf("\n");
-    printf("data:\n");
-    for (size_t i = 0; i < csv.col_len; i++) {
-        for (size_t c = 0; c < csv.col_count; c++) {
-            printf("%lf\t", csv.columns[c][i]);
+    char* n_next = calloc(len + 1, sizeof(char));
+    size_t i = 0;
+    while(i < len){
+        char c = str[i];
+        if (c == '.') break;
+        if (!isalnum(c)){
+            n_next[i] = '_';
+        } else {
+            n_next[i] = toupper(str[i]);
+        }
+        i++;
+    }
+    if(i == 0) return NULL;
+    return n_next;
+}
+char* sanitize_header(const char* str){
+    if(!str) return NULL;
+    size_t len = strlen(str);
+    if(len == 0){
+        return NULL;
+    }
+    char* head = calloc(len + 1, sizeof(char));
+    size_t i = 0;
+    while(i < len){
+        char c = str[i];
+        if (!isalnum(c) || isspace(c)){
+            head[i] = '_';
+        } else {
+            head[i] = tolower(str[i]);
+        }
+        i++;
+    }
+    if(i == 0) return NULL;
+    return head;
+}
+
+void write_header_file(CSVFile* csv, FILE* f){
+    char* guard = sanitize_guard(csv->file_name);
+    guard = guard ? guard : "UNNAMED";
+    fprintf(f, "#ifndef _%s_DATASET_H\n"
+            "#define _%s_DATASET_H\n",
+            guard, guard);
+
+    //define the struct
+    fprintf(f, "struct _gram_dataset_%s {\n", guard);
+    fprintf(f, "\t unsigned long column_count;\n");
+    fprintf(f, "\t unsigned long data_count;\n");
+
+    for(size_t h = 0; h < csv->header_count; h++){
+        char* header = sanitize_header(csv->headers[h]);
+        fprintf(f, "\t double h%s[%ld];\n", header, csv->col_len);
+        free(header);
+    }
+    fprintf(f, "} D%s = {\n", guard);
+
+    fprintf(f, "\t .column_count = %ld,\n", csv->col_count);
+    fprintf(f, "\t .data_count = %ld,\n", csv->col_len);
+    //initialize columns
+    for(size_t h = 0; h < csv->header_count; h++){
+        char* header = sanitize_header(csv->headers[h]);
+        fprintf(f, "\t .h%s = {\n\t\t", header);
+        free(header);
+        for(size_t i = 0; i < csv->col_len; i++){
+            fprintf(f, "%lf", csv->columns[h][i] );
+            if(i != csv->col_len - 1){
+                fprintf(f, ", ");
+            }
+        }
+        fprintf(f, "\n\t},\n");
+    }
+    fprintf(f, "\n};\n");
+
+    free(guard);
+    fprintf(f, "#endif\n");
+}
+
+void print_csv(CSVFile* csv){
+    printf("gram_csv\n");
+    printf("CSV file: `%s`\n", csv->file_name);
+    printf("Fields per record: %ld\n", csv->header_count);
+    printf("Data per column: %ld\n", csv->col_len);
+    printf("Headers:\n");
+    for (size_t i = 0; i < csv->header_count; i++) {
+        printf("`%s`\t", csv->headers[i]);
+    }
+    printf("\n\n");
+    printf("Column Data:\n");
+    for (size_t i = 0; i < csv->col_len; i++) {
+        for (size_t c = 0; c < csv->col_count; c++) {
+            printf("%lf\t", csv->columns[c][i]);
         }
         printf("\n");
     }
     printf("\n");
+}
+
+int main(int argc, char** args)
+{
+    ArgsDef adef = plap_args_def();
+    plap_positional_string(&adef, "input-csv-file-path", 1);
+    plap_positional_string(&adef, "output-header-file-path", 0);
+    plap_option_int(&adef, "p", "print", 0);
+    Args a = plap_parse_args(adef, argc, args);
+
+    char* in_path = plap_get_positional(&a, 0)->str;
+    PositionalArg* out_path_a = plap_get_positional(&a, 1);
+
+    FILE* in_file = fopen(in_path, "r");
+    CSVFile csv = parse_csv(in_file);
+    fclose(in_file);
+    csv.file_name = get_file_name(in_path);
+
+    if(!out_path_a || plap_get_option(&a, "p", "print")){
+        print_csv(&csv);
+    }
+    if(out_path_a){
+        FILE* out_file = fopen(out_path_a->str, "w");
+        write_header_file(&csv, out_file);
+        fclose(out_file);
+        printf("File written to `%s`\n", out_path_a->str);
+    }
+
     plap_free_args(a);
     return 0;
 }
