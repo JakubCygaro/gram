@@ -383,9 +383,9 @@ void print_csv(CSVFile* csv)
 int main(int argc, char** args)
 {
     ArgsDef adef = plap_args_def();
-    plap_positional_string(&adef, "input-csv-file-path", 1);
-    plap_positional_string(&adef, "output-header-file-path", 0);
-    plap_option_int(&adef, "p", "print", 0);
+    plap_positional_string(&adef, "input-csv-file-path", "csv file to process", 1);
+    plap_positional_string(&adef, "output-header-file-path", "header file to output", 0);
+    plap_option_int(&adef, "p", "print", "print csv file contents summary", 0);
     Args a = plap_parse_args(adef, argc, args);
 
     char* in_path = plap_get_positional(&a, 0)->str;

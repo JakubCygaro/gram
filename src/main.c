@@ -199,8 +199,10 @@ static void draw()
 int main(int argc, char** args)
 {
     ArgsDef d = plap_args_def();
-    plap_option_string(&d, "s", "so", 1);
-    plap_option_string(&d, "l", "lua", 1);
+    plap_program_desc(&d, "gram", "simple graphing utility");
+    plap_option_string(&d, "s", "so", "run the program with a shared object file", 1);
+    plap_option_string(&d, "l", "lua", "run the program with a lua script", 1);
+    plap_fail_on_no_args((&d));
     Args a = plap_parse_args(d, argc, args);
 
     Option* so = plap_get_option(&a, "s", "so");
