@@ -1,5 +1,6 @@
 #include "loadfns.h"
 #include "gram.h"
+#include "gram_csv.h"
 #include <ctype.h>
 #include <dlfcn.h>
 #include <lauxlib.h>
@@ -179,7 +180,8 @@ static GramColorScheme* ColorScheme = NULL;
 int is_color(const char* str, GramColor* c)
 {
     char* lstr = stolower(str);
-    if (find_predefined_color(str, c)) {
+    if (find_predefined_color(lstr, c)) {
+        free(lstr);
         return 1;
     }
     static const char pat[] = "#aabbcc";
@@ -211,9 +213,13 @@ static GramColorScheme* l_gram_get_color_scheme()
         lua_settop(L, 0);
         return NULL;
     }
-    ColorScheme = calloc(1, sizeof *ColorScheme);
-    ColorScheme->colors = calloc(2, sizeof(GramColor));
     size_t len = lua_rawlen(L, -1);
+
+    ColorScheme = malloc(sizeof *ColorScheme);
+    *ColorScheme = (GramColorScheme) { 0 };
+    ColorScheme->colors_sz = len;
+    ColorScheme->colors = calloc(ColorScheme->colors_sz, sizeof(GramColor));
+
     size_t i = 0;
     for (; i < len; i++) {
         int ty = lua_rawgeti(L, -1, i + 1);
@@ -223,16 +229,16 @@ static GramColorScheme* l_gram_get_color_scheme()
             continue;
         }
         const char* lstring = lua_tostring(L, -1);
-        lua_pop(L, 1);
         GramColor c = { 0 };
         if (is_color(lstring, &c)) {
-            ColorScheme->colors = realloc(ColorScheme->colors, i + 1 * sizeof c);
-            ColorScheme->colors_sz = i + 1;
             ColorScheme->colors[i] = c;
         } else {
             TraceLog(LOG_ERROR, STRINGIFY(Colors) "[%ld] is not a valid color, will be ignored", i);
         }
+        lua_pop(L, 1);
     }
+    ColorScheme->colors_sz = i + 1;
+    ColorScheme->colors = realloc(ColorScheme->colors, (i + 1) * sizeof(GramColor));
     lua_settop(L, 0);
     return ColorScheme;
 }
@@ -247,7 +253,7 @@ static void l_gram_init()
         return;
     }
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-        TraceLog(LOG_ERROR, "Error while calling" STRINGIFY(Init) " function in lua script %s",
+        TraceLog(LOG_ERROR, "Error while calling " STRINGIFY(Init) " function in lua script %s",
             lua_tostring(L, -1));
         lua_settop(L, 0);
         return;
@@ -264,12 +270,25 @@ static void l_gram_fini()
         return;
     }
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-        TraceLog(LOG_ERROR, "Error while calling" STRINGIFY(Fini) " function in lua script %s",
+        TraceLog(LOG_ERROR, "Error while calling " STRINGIFY(Fini) " function in lua script %s",
             lua_tostring(L, -1));
         lua_settop(L, 0);
         return;
     }
 }
+
+static int l_load_csv(lua_State *L){
+    const char* path = luaL_checkstring(L, 1);
+    CSVFile csv = { 0 };
+    if(gram_csv_load_csv(path, &csv)){
+        lua_pushnil(L);
+        TraceLog(LOG_ERROR, "CSV: %s", gram_csv_err_msg());
+        return 1;
+    }
+    gram_csv_csv_file_free(csv);
+    return 0;
+}
+
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
 {
     L = NULL;
@@ -286,4 +305,13 @@ void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
     fns->gram_get_dimensions = &l_gram_get_dimensions;
     fns->gram_update = &l_gram_update;
     L = l;
+
+
+    // push the gram functions table
+    lua_createtable(L, 0, 1);
+    lua_pushstring(L, "load_csv");
+    lua_pushcfunction(L, l_load_csv);
+    lua_settable(L, 1);
+    lua_setglobal(L, "Gram");
+
 }

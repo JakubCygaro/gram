@@ -54,7 +54,7 @@ target_link_libraries(gram
     PRIVATE raylib
     PRIVATE -lm
     PRIVATE Lua::Lua
-    # PRIVATE gramcsv
+    PRIVATE gramcsv
 )
 
 add_executable(gram_csv
