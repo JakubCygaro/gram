@@ -22,6 +22,8 @@ typedef struct {
     _DEFINE_FN(size_t, gram_get_time, void);
     _DEFINE_FN(size_t, gram_get_dimensions, void);
     _DEFINE_FN(GramColorScheme*, gram_get_color_scheme, void);
+    _DEFINE_FN(void, gram_init, void);
+    _DEFINE_FN(void, gram_fini, void);
 } GramExtFns;
 
 void load_from_so(const char*, GramExtFns*);

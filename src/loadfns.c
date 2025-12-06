@@ -76,6 +76,12 @@ void load_from_so(const char* p, GramExtFns* fns)
 
     _LOAD_FN(fns->gram_get_color_scheme, fns->lib, gram_get_color_scheme);
     _LOAD_ERR(fns->gram_get_color_scheme, gram_get_color_scheme, p);
+
+    _LOAD_FN(fns->gram_init, fns->lib, gram_init);
+    _LOAD_ERR(fns->gram_init, gram_init, p);
+
+    _LOAD_FN(fns->gram_fini, fns->lib, gram_fini);
+    _LOAD_ERR(fns->gram_fini, gram_fini, p);
 }
 static size_t l_gram_get_time()
 {
@@ -85,7 +91,7 @@ static size_t l_gram_get_time()
         return 1;
     }
     size_t t = lua_tointeger(L, -1);
-    lua_pop(L, 1);
+    lua_settop(L, 0);
     if (t <= 0) {
         TraceLog(LOG_ERROR, STRINGIFY(time) " has to be a positive non-zero integer");
         return 1;
@@ -98,13 +104,18 @@ static void l_gram_update(size_t t, float* row)
     lua_getglobal(L, STRINGIFY(gram_update));
     if (!lua_isfunction(L, -1)) {
         TraceLog(LOG_ERROR, "Could not find" STRINGIFY(gram_update) " function in lua script");
+        lua_settop(L, 0);
         return;
     }
     lua_pushnumber(L, t);
-    if (Dim <= 0)
+    if (Dim <= 0) {
+        lua_settop(L, 0);
         return;
+    }
     if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-        TraceLog(LOG_ERROR, "Error while calling" STRINGIFY(gram_update) " function in lua script");
+        TraceLog(LOG_ERROR, "Error while calling" STRINGIFY(gram_update) " function in lua script",
+            lua_tostring(L, -1));
+        lua_settop(L, 0);
         return;
     }
     if (lua_isnumber(L, -1) && Dim == 1) {
@@ -129,6 +140,7 @@ static int l_gram_get_draw_type()
     lua_getglobal(L, STRINGIFY(draw));
     if (!lua_isstring(L, -1)) {
         TraceLog(LOG_ERROR, STRINGIFY(draw) " has to be a string");
+        lua_settop(L, 0);
         return 0;
     }
     const char* str = lua_tostring(L, -1);
@@ -145,6 +157,7 @@ static int l_gram_get_draw_type()
         TraceLog(LOG_ERROR, STRINGIFY(draw) " is of invalid value `%s`", str);
     }
     free(strl);
+    lua_settop(L, 0);
     return ret;
 }
 static size_t l_gram_get_dimensions()
@@ -155,7 +168,7 @@ static size_t l_gram_get_dimensions()
         return 1;
     }
     Dim = lua_tointeger(L, -1);
-    lua_pop(L, 1);
+    lua_settop(L, 0);
     if (Dim <= 0) {
         TraceLog(LOG_ERROR, STRINGIFY(dimensions) " has to be a positive non-zero integer");
         return 1;
@@ -173,7 +186,7 @@ int is_color(const char* str, GramColor* c)
         return 1;
     }
     static const char pat[] = "#aabbcc";
-    if (strlen(lstr) != (sizeof pat / sizeof(char)) - 1){
+    if (strlen(lstr) != (sizeof pat / sizeof(char)) - 1) {
         free(lstr);
         return 0;
     }
@@ -198,10 +211,11 @@ static GramColorScheme* l_gram_get_color_scheme()
     lua_getglobal(L, STRINGIFY(colors));
     if (!lua_istable(L, -1)) {
         TraceLog(LOG_WARNING, STRINGIFY(colors) " not set, assuming default color scheme");
+        lua_settop(L, 0);
         return NULL;
     }
     ColorScheme = calloc(1, sizeof *ColorScheme);
-    ColorScheme->colors = calloc(2, sizeof (GramColor));
+    ColorScheme->colors = calloc(2, sizeof(GramColor));
     size_t len = lua_rawlen(L, -1);
     size_t i = 0;
     for (; i < len; i++) {
@@ -213,8 +227,8 @@ static GramColorScheme* l_gram_get_color_scheme()
         const char* cstring = lua_tostring(L, -1);
         GramColor c = { 0 };
         if (is_color(cstring, &c)) {
-            ColorScheme->colors = realloc(ColorScheme->colors, i+1 * sizeof c);
-            ColorScheme->colors_sz = i+1;
+            ColorScheme->colors = realloc(ColorScheme->colors, i + 1 * sizeof c);
+            ColorScheme->colors_sz = i + 1;
             ColorScheme->colors[i] = c;
         } else {
             TraceLog(LOG_ERROR, STRINGIFY(colors) "[%ld] is not a valid color, will be ignored", i);
@@ -222,10 +236,42 @@ static GramColorScheme* l_gram_get_color_scheme()
 
         lua_pop(L, 1);
     }
-
+    lua_settop(L, 0);
     return ColorScheme;
 }
-
+static void l_gram_init()
+{
+    if (!lua_getglobal(L, STRINGIFY(init))) {
+        lua_settop(L, 0);
+        return;
+    }
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, 0);
+        return;
+    }
+    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+        TraceLog(LOG_ERROR, "Error while calling" STRINGIFY(init) " function in lua script",
+            lua_tostring(L, -1));
+        lua_settop(L, 0);
+        return;
+    }
+}
+static void l_gram_fini(){
+    if (!lua_getglobal(L, STRINGIFY(fini))) {
+        lua_settop(L, 0);
+        return;
+    }
+    if (!lua_isfunction(L, -1)) {
+        lua_settop(L, 0);
+        return;
+    }
+    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+        TraceLog(LOG_ERROR, "Error while calling" STRINGIFY(fini) " function in lua script",
+            lua_tostring(L, -1));
+        lua_settop(L, 0);
+        return;
+    }
+}
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
 {
     L = NULL;
@@ -234,6 +280,8 @@ void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
             lua_tostring(l, -1));
         return;
     }
+    fns->gram_fini = &l_gram_fini;
+    fns->gram_init = &l_gram_init;
     fns->gram_get_color_scheme = &l_gram_get_color_scheme;
     fns->gram_get_draw_type = &l_gram_get_draw_type;
     fns->gram_get_time = &l_gram_get_time;

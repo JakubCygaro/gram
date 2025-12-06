@@ -62,6 +62,8 @@ float absf(float x)
 
 static void load()
 {
+    GramExtFns* ext = &gram_ext_fns;
+    if(ext->gram_fini) ext->gram_fini();
     if (s_data) {
         for (size_t i = 0; i < s_time; i++) {
             free(s_data[i]);
@@ -74,7 +76,8 @@ static void load()
     } else if(lua_state){
         load_from_lua(gram_lua_file, lua_state, &gram_ext_fns);
     }
-    GramExtFns* ext = &gram_ext_fns;
+
+    if(ext->gram_init) ext->gram_init();
 
     if (ext->gram_get_draw_type)
         s_draw_type = ext->gram_get_draw_type();
