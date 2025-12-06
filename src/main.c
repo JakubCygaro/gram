@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include "gram.h"
+#include "gram_csv.h"
 #include "loadfns.h"
 #define PLAP_IMPLEMENTATION
 #include "plap.h"
@@ -63,7 +64,7 @@ float absf(float x)
 static void load()
 {
     GramExtFns* ext = &gram_ext_fns;
-    if(ext->gram_fini) ext->gram_fini();
+    // if(ext->gram_fini) ext->gram_fini();
     if (s_data) {
         for (size_t i = 0; i < s_time; i++) {
             free(s_data[i]);
@@ -91,7 +92,13 @@ static void load()
         s_data[i] = calloc(s_dim, sizeof(float));
     }
 
-    s_cscheme = ext->gram_get_color_scheme ? ext->gram_get_color_scheme() ? ext->gram_get_color_scheme() : &GRAM_DEFAULT_CSCHEME : &GRAM_DEFAULT_CSCHEME;
+    if(ext->gram_get_color_scheme){
+        GramColorScheme* cs = ext->gram_get_color_scheme();
+        if(cs)
+            s_cscheme = cs;
+    } else {
+        s_cscheme = &GRAM_DEFAULT_CSCHEME;
+    }
 }
 
 static void update_data()
@@ -234,11 +241,11 @@ int main(int argc, char** args)
         draw();
         EndDrawing();
     }
-    CloseWindow();
     if (gram_ext_fns.lib)
         dlclose(gram_ext_fns.lib);
     if(lua_state)
         lua_close(lua_state);
+    CloseWindow();
 
     plap_free_args(a);
     return 0;
