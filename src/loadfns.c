@@ -1,4 +1,5 @@
 #include "loadfns.h"
+#include "gram.h"
 #include <ctype.h>
 #include <dlfcn.h>
 #include <lauxlib.h>
@@ -6,13 +7,29 @@
 #include <lualib.h>
 #include <raylib.h>
 #include <raymath.h>
+#include <stdlib.h>
 #include <string.h>
-
-static lua_State* L = NULL;
-static size_t Dim = 0;
 
 #define STRINGIFY(T) #T
 #define streq(A, B) strcmp(A, B) == 0
+
+typedef struct {
+    const char* name;
+    const GramColor color;
+} string_color_pair_t;
+
+static const string_color_pair_t PredefinedColors[] = {
+    (string_color_pair_t) { .name = "red", .color = GRAM_RED },
+    (string_color_pair_t) { .name = "blue", .color = GRAM_BLUE },
+    (string_color_pair_t) { .name = "green", .color = GRAM_GREEN },
+    (string_color_pair_t) { .name = "pink", .color = GRAM_PINK },
+    (string_color_pair_t) { .name = "yellow", .color = GRAM_YELLOW },
+    (string_color_pair_t) { .name = "white", .color = GRAM_WHITE },
+    (string_color_pair_t) { .name = "orange", .color = GRAM_ORANGE },
+};
+
+static lua_State* L = NULL;
+static size_t Dim = 0;
 
 char* stolower(const char* str)
 {
@@ -22,6 +39,17 @@ char* stolower(const char* str)
         lstr[i] = tolower(str[i]);
     }
     return lstr;
+}
+
+static int find_predefined_color(const char* str, GramColor* c)
+{
+    for (size_t i = 0; i < sizeof(PredefinedColors) / sizeof(string_color_pair_t); i++) {
+        if (streq(str, PredefinedColors[i].name)) {
+            *c = PredefinedColors[i].color;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void load_from_so(const char* p, GramExtFns* fns)
@@ -134,8 +162,68 @@ static size_t l_gram_get_dimensions()
     }
     return Dim;
 }
-static GramColorScheme* l_gram_get_color_scheme() {
 
+static GramColorScheme* ColorScheme = NULL;
+
+int is_color(const char* str, GramColor* c)
+{
+    char* lstr = stolower(str);
+    if (find_predefined_color(lstr, c)) {
+        free(lstr);
+        return 1;
+    }
+    static const char pat[] = "#aabbcc";
+    if (strlen(lstr) != (sizeof pat / sizeof(char)) - 1){
+        free(lstr);
+        return 0;
+    }
+    long hex = strtol(lstr + 1, NULL, 16);
+    c->b = (c->b | hex);
+    hex = hex >> 8;
+    c->g = (c->g | hex);
+    hex = hex >> 8;
+    c->r = (c->r | hex);
+    c->a = 255;
+
+    free(lstr);
+    return 1;
+}
+
+static GramColorScheme* l_gram_get_color_scheme()
+{
+    if (ColorScheme) {
+        free(ColorScheme);
+        ColorScheme = NULL;
+    }
+    lua_getglobal(L, STRINGIFY(colors));
+    if (!lua_istable(L, -1)) {
+        TraceLog(LOG_WARNING, STRINGIFY(colors) " not set, assuming default color scheme");
+        return NULL;
+    }
+    ColorScheme = calloc(1, sizeof *ColorScheme);
+    ColorScheme->colors = calloc(2, sizeof (GramColor));
+    size_t len = lua_rawlen(L, -1);
+    size_t i = 0;
+    for (; i < len; i++) {
+        int ty = lua_rawgeti(L, -1, i + 1);
+        if (ty != LUA_TSTRING) {
+            TraceLog(LOG_ERROR, STRINGIFY(colors) "[%ld] is not a string, will be ignored", i);
+            continue;
+        }
+        const char* cstring = lua_tostring(L, -1);
+        GramColor c = { 0 };
+        if (is_color(cstring, &c)) {
+            ColorScheme->colors = realloc(ColorScheme->colors, i+1 * sizeof c);
+            ColorScheme->colors_sz = i+1;
+            ColorScheme->colors[i] = c;
+        } else {
+            TraceLog(LOG_ERROR, STRINGIFY(colors) "[%ld] is not a valid color, will be ignored", i);
+        }
+
+        lua_pop(L, 1);
+    }
+
+    return ColorScheme;
 }
 
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)

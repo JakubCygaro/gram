@@ -20,12 +20,15 @@
 #define COL_MARGIN_PERCENT 0.20f
 #define EXTERNAL_MARGIN_PERCENT 0.1f
 
+const GramColor DEFAULT_COLORS[] = {
+    GRAM_RED,
+    GRAM_GREEN,
+    GRAM_BLUE,
+};
+
 const GramColorScheme GRAM_DEFAULT_CSCHEME = {
-    .colors_sz = 3,
-    .colors = {
-        GRAM_RED,
-        GRAM_GREEN,
-        GRAM_BLUE }
+    .colors_sz = sizeof DEFAULT_COLORS / sizeof(GramColor),
+    .colors = (GramColor*)&DEFAULT_COLORS
 };
 
 const char* gram_fns_file_default = "./libgram_update.so";
