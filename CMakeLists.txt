@@ -41,6 +41,10 @@ if(Lua_FOUND AND NOT TARGET Lua::Lua)
   )
 endif()
 
+add_library(gramcsv STATIC
+    ${CMAKE_SOURCE_DIR}/src/gram_csv_lib.c
+)
+
 add_executable(gram
     ${CMAKE_SOURCE_DIR}/src/main.c
     ${CMAKE_SOURCE_DIR}/src/loadfns.c
@@ -54,6 +58,10 @@ target_link_libraries(gram
 
 add_executable(gram_csv
     ${CMAKE_SOURCE_DIR}/src/gram_csv.c
+)
+
+target_link_libraries(gram_csv
+    PRIVATE gramcsv
 )
 
 add_library(gram_update SHARED
