@@ -31,6 +31,7 @@ static const string_color_pair_t PredefinedColors[] = {
 
 static lua_State* L = NULL;
 static size_t Dim = 0;
+static const char* LuaSrc = NULL;
 
 char* stolower(const char* str)
 {
@@ -277,7 +278,8 @@ static void l_gram_fini()
     }
 }
 
-static void make_csv_table(lua_State *l, CSVFile* csv){
+static void make_csv_table(lua_State* l, CSVFile* csv)
+{
     lua_createtable(l, 0, csv->header_count + 1);
     // set fname
     lua_pushstring(l, csv->file_name);
@@ -287,12 +289,12 @@ static void make_csv_table(lua_State *l, CSVFile* csv){
     lua_setfield(l, -2, "dim");
 
     // // set headers
-    for(size_t h = 0; h < csv->header_count; h++){
+    for (size_t h = 0; h < csv->header_count; h++) {
         // header is a sequential table
         lua_createtable(L, csv->col_len, 0);
 
         // push all values
-        for(size_t i = 0; i < csv->col_len; i++){
+        for (size_t i = 0; i < csv->col_len; i++) {
             lua_pushnumber(L, csv->columns[h][i]);
             lua_rawseti(L, -2, i + 1);
         }
@@ -300,15 +302,32 @@ static void make_csv_table(lua_State *l, CSVFile* csv){
     }
 }
 
-static int l_load_csv(lua_State *l){
-    const char* path = luaL_checkstring(l, 1);
+size_t find_dir_prefix(const char* src_path)
+{
+    size_t len = strlen(src_path);
+    for (size_t i = len; i >= 1; i--) {
+        if (src_path[i - 1] == '/')
+            return i - 1;
+    }
+    return 0;
+}
+
+static int l_load_csv(lua_State* l)
+{
+    const char* lpath = luaL_checkstring(l, 1);
+    size_t dir_prefix = find_dir_prefix(LuaSrc);
+    char* rel_path = calloc(dir_prefix + strlen(lpath) + 1, sizeof(char));
+    memcpy(rel_path, LuaSrc, dir_prefix + 1);
+    memcpy(rel_path + dir_prefix + 1, lpath, strlen(lpath));
     CSVFile csv = { 0 };
-    if(gram_csv_load_csv(path, &csv)){
+    if (gram_csv_load_csv(rel_path, &csv)) {
         lua_pop(l, 1);
         lua_pushnil(l);
         TraceLog(LOG_ERROR, "CSV: %s", gram_csv_err_msg());
+        free(rel_path);
         return 1;
     }
+    free(rel_path);
     make_csv_table(l, &csv);
     gram_csv_csv_file_free(csv);
     return 1;
@@ -317,11 +336,13 @@ static int l_load_csv(lua_State *l){
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
 {
     L = NULL;
+    LuaSrc = NULL;
     if (luaL_loadfile(l, src) || lua_pcall(l, 0, 0, 0)) {
         TraceLog(LOG_ERROR, "Cannot run configuration file: %s",
             lua_tostring(l, -1));
         return;
     }
+    LuaSrc = src;
     fns->gram_fini = &l_gram_fini;
     fns->gram_init = &l_gram_init;
     fns->gram_get_color_scheme = &l_gram_get_color_scheme;
@@ -331,12 +352,10 @@ void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
     fns->gram_update = &l_gram_update;
     L = l;
 
-
     // push the gram functions table
     lua_createtable(L, 0, 1);
     lua_pushstring(L, "load_csv");
     lua_pushcfunction(L, l_load_csv);
     lua_settable(L, 1);
     lua_setglobal(L, "Gram");
-
 }
