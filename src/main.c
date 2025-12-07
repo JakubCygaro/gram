@@ -9,7 +9,6 @@
 #include <stdlib.h>
 
 #include "gram.h"
-#include "gram_csv.h"
 #include "loadfns.h"
 #define PLAP_IMPLEMENTATION
 #include "plap.h"
@@ -40,7 +39,6 @@ const float PLOT_EXTERNAL_MARGIN_H = HEIGHT * EXTERNAL_MARGIN_PERCENT / 2.;
 
 static size_t s_time = TIME;
 static size_t s_dim = DIM;
-static void* gram_update_lib = NULL;
 static char* gram_so_file = NULL;
 static char* gram_lua_file = NULL;
 static float** s_data = NULL;

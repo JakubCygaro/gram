@@ -277,16 +277,41 @@ static void l_gram_fini()
     }
 }
 
-static int l_load_csv(lua_State *L){
-    const char* path = luaL_checkstring(L, 1);
+static void make_csv_table(lua_State *l, CSVFile* csv){
+    lua_createtable(l, 0, csv->header_count + 1);
+    // set fname
+    lua_pushstring(l, csv->file_name);
+    lua_setfield(l, -2, "fname");
+
+    lua_pushinteger(l, csv->col_count);
+    lua_setfield(l, -2, "dim");
+
+    // // set headers
+    for(size_t h = 0; h < csv->header_count; h++){
+        // header is a sequential table
+        lua_createtable(L, csv->col_len, 0);
+
+        // push all values
+        for(size_t i = 0; i < csv->col_len; i++){
+            lua_pushnumber(L, csv->columns[h][i]);
+            lua_rawseti(L, -2, i + 1);
+        }
+        lua_setfield(L, -2, csv->headers[h]);
+    }
+}
+
+static int l_load_csv(lua_State *l){
+    const char* path = luaL_checkstring(l, 1);
     CSVFile csv = { 0 };
     if(gram_csv_load_csv(path, &csv)){
-        lua_pushnil(L);
+        lua_pop(l, 1);
+        lua_pushnil(l);
         TraceLog(LOG_ERROR, "CSV: %s", gram_csv_err_msg());
         return 1;
     }
+    make_csv_table(l, &csv);
     gram_csv_csv_file_free(csv);
-    return 0;
+    return 1;
 }
 
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
