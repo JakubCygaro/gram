@@ -54,36 +54,36 @@ local data = {
 
 local fns = {}
 
-fns.labour = function (t, country)
+fns.labour = function(t, country)
     return country.l0 * math.exp(country.n * t)
 end
 
-fns.inv_rate = function (t, country)
+fns.inv_rate = function(t, country)
     return country.s_mean * (1 + country.theta * math.sin(2 * math.pi * t / country.omega))
 end
 
-fns.capital = function (t, country)
+fns.capital = function(t, country)
     local k = fns.inv_rate(t - 1, country) * country.last.y + (1 - country.d) * country.last.k
     country.last.k = k
     return k
 end
 
-fns.production = function (t, country)
+fns.production = function(t, country)
+    local y
     if t <= 0 then
         country.last.k = country.k0
-        local y = (country.k0 ^ country.alpha) * (country.l0 ^ (1 - country.alpha))
-        country.last.y = y
-        return y
+        y = (country.k0 ^ country.alpha) * (country.l0 ^ (1 - country.alpha))
+    else
+        y = (fns.capital(t, country) ^ country.alpha) * (fns.labour(t, country) ^ (1 - country.alpha))
     end
-    local y = (fns.capital(t, country) ^ country.alpha) * (fns.labour(t, country) ^ (1 - country.alpha))
     country.last.y = y
     return y
 end
 
 function Update(t)
     return {
-        [1] = fns.production(t, data.China),
-        [2] = fns.production(t, data.India),
-        [3] = fns.production(t, data.USA),
+        [1] = fns.production(t, data.China) / fns.labour(t, data.China),
+        [2] = fns.production(t, data.India) / fns.labour(t, data.India),
+        [3] = fns.production(t, data.USA) / fns.labour(t, data.USA),
     }
 end
