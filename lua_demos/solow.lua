@@ -80,6 +80,8 @@ fns.production = function(t, country)
     return y
 end
 
+-- Labour productivity function plot for 3 countries: China, India & USA.
+-- Assuming that the USA is the base country (ie. K0_USA = 1, L0_USA = 1).
 function Update(t)
     return {
         [1] = fns.production(t, data.China) / fns.labour(t, data.China),
