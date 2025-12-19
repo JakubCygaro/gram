@@ -31,6 +31,7 @@ static const string_color_pair_t PredefinedColors[] = {
 
 static lua_State* L = NULL;
 static size_t Dim = 0;
+static size_t StartAt = 0;
 static const char* LuaSrc = NULL;
 
 char* stolower(const char* str)
@@ -84,6 +85,9 @@ void load_from_so(const char* p, GramExtFns* fns)
 
     _LOAD_FN(fns->gram_fini, fns->lib, gram_fini);
     _LOAD_ERR(fns->gram_fini, gram_fini, p);
+
+    _LOAD_FN(fns->gram_get_start_at, fns->lib, gram_get_start_at);
+    _LOAD_ERR(fns->gram_get_start_at, gram_get_start_at, p);
 }
 static size_t l_gram_get_time()
 {
@@ -227,7 +231,7 @@ static GramColorScheme* l_gram_get_color_scheme()
     for (; i < len; i++) {
         int ty = lua_rawgeti(L, -1, i + 1);
         if (ty != LUA_TSTRING) {
-            TraceLog(LOG_ERROR, STRINGIFY(Colors) "[%ld] is not a string, will be ignored", i);
+            TraceLog(LOG_ERROR, STRINGIFY(Colors) " [%ld] is not a string, will be ignored", i);
             lua_pop(L, 1);
             continue;
         }
@@ -236,7 +240,7 @@ static GramColorScheme* l_gram_get_color_scheme()
         if (is_color(lstring, &c)) {
             ColorScheme->colors[i] = c;
         } else {
-            TraceLog(LOG_ERROR, STRINGIFY(Colors) "[%ld] is not a valid color, will be ignored", i);
+            TraceLog(LOG_ERROR, STRINGIFY(Colors) " [%ld] is not a valid color, will be ignored", i);
         }
         lua_pop(L, 1);
     }
@@ -256,7 +260,7 @@ static void l_gram_init()
         return;
     }
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-        TraceLog(LOG_ERROR, "Error while calling " STRINGIFY(Init) " function in lua script %s",
+        TraceLog(LOG_ERROR, "Error while calling `" STRINGIFY(Init) "` function in lua script %s",
             lua_tostring(L, -1));
         lua_settop(L, 0);
         return;
@@ -273,7 +277,7 @@ static void l_gram_fini()
         return;
     }
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-        TraceLog(LOG_ERROR, "Error while calling " STRINGIFY(Fini) " function in lua script %s",
+        TraceLog(LOG_ERROR, "Error while calling `" STRINGIFY(Fini) "` function in lua script %s",
             lua_tostring(L, -1));
         lua_settop(L, 0);
         return;
@@ -334,6 +338,24 @@ static int l_load_csv(lua_State* l)
     gram_csv_csv_file_free(csv);
     return 1;
 }
+static size_t l_gram_get_start_at()
+{
+    lua_getglobal(L, STRINGIFY(StartAt));
+    if (!lua_isinteger(L, -1)) {
+        TraceLog(LOG_WARNING, STRINGIFY(StartAt) " not set, assuming default of 0");
+        StartAt = 0;
+        return StartAt;
+    }
+    int start_at = lua_tointeger(L, -1);
+    lua_settop(L, 0);
+    if (start_at <= 0) {
+        TraceLog(LOG_ERROR, STRINGIFY(StartAt) " has to be a positive non-zero integer");
+        StartAt = 0;
+        return StartAt;
+    }
+    StartAt = start_at;
+    return StartAt;
+}
 
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
 {
@@ -351,6 +373,7 @@ void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
     fns->gram_get_draw_type = &l_gram_get_draw_type;
     fns->gram_get_time = &l_gram_get_time;
     fns->gram_get_dimensions = &l_gram_get_dimensions;
+    fns->gram_get_start_at = &l_gram_get_start_at;
     fns->gram_update = &l_gram_update;
     L = l;
 

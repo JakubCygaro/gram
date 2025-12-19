@@ -37,6 +37,7 @@ const float PLOT_W = WIDHT * (1 - EXTERNAL_MARGIN_PERCENT);
 const float PLOT_EXTERNAL_MARGIN_W = WIDHT * EXTERNAL_MARGIN_PERCENT / 2.;
 const float PLOT_EXTERNAL_MARGIN_H = HEIGHT * EXTERNAL_MARGIN_PERCENT / 2.;
 
+static size_t s_start_at = 0;
 static size_t s_time = TIME;
 static size_t s_dim = DIM;
 static char* gram_so_file = NULL;
@@ -64,7 +65,7 @@ float absf(float x)
 static void load()
 {
     GramExtFns* ext = &gram_ext_fns;
-    // if(ext->gram_fini) ext->gram_fini();
+    if(ext->gram_fini) ext->gram_fini();
     if (s_data) {
         for (size_t i = 0; i < s_time; i++) {
             free(s_data[i]);
@@ -75,6 +76,9 @@ static void load()
     if (gram_so_file) {
         load_from_so(gram_so_file, &gram_ext_fns);
     } else if (lua_state) {
+        lua_close(lua_state);
+        lua_state = luaL_newstate();
+        luaL_openlibs(lua_state);
         load_from_lua(gram_lua_file, lua_state, &gram_ext_fns);
     }
 
@@ -88,6 +92,7 @@ static void load()
 
     s_time = ext->gram_get_time ? ext->gram_get_time() : TIME;
 
+    s_start_at = ext->gram_get_start_at ? ext->gram_get_start_at() : 0;
     s_data = calloc(s_time, sizeof(float*));
     for (size_t i = 0; i < s_time; i++) {
         s_data[i] = calloc(s_dim, sizeof(float));
@@ -110,11 +115,11 @@ static void update_data()
     s_max = 0;
 
     for (size_t t = 0; t < s_time; t++) {
-        gram_ext_fns.gram_update(t, s_data[t]);
+        gram_ext_fns.gram_update(t + s_start_at, s_data[t]);
 
         for (size_t d = 0; d < s_dim; d++) {
             s_min = fmin(s_data[t][d], s_min);
-            s_max = fmax(s_data[t][d], s_max);
+                s_max = fmax(s_data[t][d], s_max);
         }
     }
     s_max_v = s_max;
@@ -205,7 +210,7 @@ static void draw_data()
                     DrawLineV(prev_c[d], center, (Color) { color.r, color.g, color.b, color.a });
                 }
                 prev_c[d] = center;
-                data_point = Vector2Distance(mouse, center) ? v : data_point;
+                data_point = Vector2Distance(mouse, center) <= 8 ? v : data_point;
             } break;
             }
         }
