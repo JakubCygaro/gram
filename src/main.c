@@ -1,7 +1,7 @@
+#include <dlfcn.h>
+#include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
-#include <lauxlib.h>
-#include <dlfcn.h>
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
@@ -44,6 +44,8 @@ static char* gram_lua_file = NULL;
 static float** s_data = NULL;
 static float s_min = 0;
 static float s_max = 0;
+static float s_min_v = 0;
+static float s_max_v = 0;
 static int s_draw_type = GRAM_DRAW_RECT;
 static float s_full = 0;
 static float s_colw = 0;
@@ -70,13 +72,14 @@ static void load()
         free(s_data);
         s_data = NULL;
     }
-    if(gram_so_file){
+    if (gram_so_file) {
         load_from_so(gram_so_file, &gram_ext_fns);
-    } else if(lua_state){
+    } else if (lua_state) {
         load_from_lua(gram_lua_file, lua_state, &gram_ext_fns);
     }
 
-    if(ext->gram_init) ext->gram_init();
+    if (ext->gram_init)
+        ext->gram_init();
 
     if (ext->gram_get_draw_type)
         s_draw_type = ext->gram_get_draw_type();
@@ -90,9 +93,9 @@ static void load()
         s_data[i] = calloc(s_dim, sizeof(float));
     }
 
-    if(ext->gram_get_color_scheme){
+    if (ext->gram_get_color_scheme) {
         GramColorScheme* cs = ext->gram_get_color_scheme();
-        if(cs)
+        if (cs)
             s_cscheme = cs;
     } else {
         s_cscheme = &GRAM_DEFAULT_CSCHEME;
@@ -114,6 +117,8 @@ static void update_data()
             s_max = fmax(s_data[t][d], s_max);
         }
     }
+    s_max_v = s_max;
+    s_min_v = s_min;
     s_min *= 1.05;
     s_max *= 1.05;
     s_full = s_max - s_min;
@@ -131,9 +136,35 @@ static void update()
     }
 }
 
+static void draw_data_point(Vector2 at, double val)
+{
+    static char buf[128] = { 0 };
+    sprintf(buf, "%lf", val);
+    Vector2 sz = MeasureTextEx(GetFontDefault(), buf, 10, 10);
+    Vector2 pos = {
+        .x = at.x,
+        .y = at.y - sz.y
+    };
+    float w = sz.x * 1.1;
+    float h = sz.y * 1.1;
+    Rectangle box = {
+        .x = pos.x - (w - sz.x) / 2.,
+        .y = pos.y - (h - sz.y) / 2.,
+        .width = w,
+        .height = h,
+    };
+
+    DrawRectangleRounded(box, 5, 10, GRAY);
+    DrawTextEx(GetFontDefault(), buf, pos, 10, 10, WHITE);
+}
+
 static void draw_data()
 {
     Vector2 prev_c[s_dim];
+    Vector2 mouse = GetMousePosition();
+
+    // NAN if no data point to draw
+    double data_point = NAN;
 
     for (size_t i = 0; i < s_time; i++) {
         for (size_t d = 0; d < s_dim; d++) {
@@ -151,6 +182,18 @@ static void draw_data()
                     .height = absf(screen_h),
                 };
                 DrawRectangleRec(r, (Color) { color.r, color.g, color.b, color.a });
+                data_point = CheckCollisionPointRec(mouse, r) ? v : data_point;
+            } break;
+            case GRAM_DRAW_COL: {
+                float w = (s_colw - s_col_w_marg * 2) / s_dim;
+                Rectangle r = {
+                    .x = (0 + (i * s_colw) + s_col_w_marg) + PLOT_EXTERNAL_MARGIN_W + (d * w),
+                    .y = (PLOT_H - s_plot_center_off - adjust) + PLOT_EXTERNAL_MARGIN_H,
+                    .width = w,
+                    .height = absf(screen_h),
+                };
+                DrawRectangleRec(r, (Color) { color.r, color.g, color.b, color.a });
+                data_point = CheckCollisionPointRec(mouse, r) ? v : data_point;
             } break;
             case GRAM_DRAW_LINE: {
                 Vector2 center = {
@@ -162,6 +205,7 @@ static void draw_data()
                     DrawLineV(prev_c[d], center, (Color) { color.r, color.g, color.b, color.a });
                 }
                 prev_c[d] = center;
+                data_point = Vector2Distance(mouse, center) ? v : data_point;
             } break;
             }
         }
@@ -171,6 +215,8 @@ static void draw_data()
         (Vector2) { .x = PLOT_EXTERNAL_MARGIN_W, .y = HEIGHT - PLOT_EXTERNAL_MARGIN_H - s_plot_center_off },
         (Vector2) { .x = WIDHT - PLOT_EXTERNAL_MARGIN_W, .y = HEIGHT - PLOT_EXTERNAL_MARGIN_H - s_plot_center_off },
         (Color) { .r = 255, .b = 255, .g = 255, .a = 255 / 2 });
+    if (!isnan(data_point))
+        draw_data_point(mouse, data_point);
 }
 
 static void draw_plot_region()
@@ -191,6 +237,7 @@ static void draw_legend_region()
     ClearBackground(WHITE);
 
     static const char* zero = "0";
+    static char buf[128 * 2] = { 0 };
     if (gram_ext_fns.gram_update) {
         Vector2 sz = MeasureTextEx(GetFontDefault(), zero, 24, 10);
         Vector2 pos = {
@@ -198,6 +245,14 @@ static void draw_legend_region()
             .y = HEIGHT - PLOT_EXTERNAL_MARGIN_H - s_plot_center_off - (sz.y / 2.),
         };
         DrawTextEx(GetFontDefault(), zero, pos, 24, 10, RED);
+
+        // sprintf(buf, "%lf", s_max_v);
+        // sz = MeasureTextEx(GetFontDefault(), buf, 2, 10);
+        // pos = (Vector2){
+        //     .x = PLOT_EXTERNAL_MARGIN_W - sz.x * 1.5,
+        //     .y = PLOT_EXTERNAL_MARGIN_H + ((s_max_v / s_full) * PLOT_H) - (sz.y / 2.),
+        // };
+        // DrawTextEx(GetFontDefault(), buf, pos, 24, 10, RED);
     }
 }
 
@@ -218,12 +273,12 @@ int main(int argc, char** args)
 
     Option* so = plap_get_option(&a, "s", "so");
     Option* lua = plap_get_option(&a, "l", "lua");
-    if(so && lua){
+    if (so && lua) {
         fprintf(stderr, "Conflicting options `lua` and `so` (only one permitted)\n");
         exit(-1);
-    } else if (so){
+    } else if (so) {
         gram_so_file = so->str;
-    } else if(lua){
+    } else if (lua) {
         gram_lua_file = lua->str;
         lua_state = luaL_newstate();
         luaL_openlibs(lua_state);
@@ -241,7 +296,7 @@ int main(int argc, char** args)
     }
     if (gram_ext_fns.lib)
         dlclose(gram_ext_fns.lib);
-    if(lua_state)
+    if (lua_state)
         lua_close(lua_state);
     CloseWindow();
 

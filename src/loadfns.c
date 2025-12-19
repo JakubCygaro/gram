@@ -153,6 +153,8 @@ static int l_gram_get_draw_type()
         ret = GRAM_DRAW_LINE;
     } else if (streq(strl, "rect")) {
         ret = GRAM_DRAW_RECT;
+    } else if (streq(strl, "col")) {
+        ret = GRAM_DRAW_COL;
     } else {
         TraceLog(LOG_ERROR, STRINGIFY(Draw) " is of invalid value `%s`", str);
     }
