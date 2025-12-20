@@ -1,27 +1,24 @@
-#include <stdlib.h>
-#include "ceny.h"
 #include "gram.h"
+#include <stdlib.h>
 
 #define DIM 1
 #define TIME 100
 
-void gram_update(size_t t, float* ys) {
-    ys[0] = DCENY.hrok[t] - 100.0;
+void gram_update(size_t t, float* ys)
+{
+    ys[0] = t;
 }
 
-int gram_get_draw_type() {
-    return GRAM_DRAW_LINE;
+int gram_get_draw_type()
+{
+    return GRAM_DRAW_RECT;
 }
 
-size_t gram_get_time(){
-    return DCENY.data_count;
+size_t gram_get_time()
+{
+    return TIME;
 }
-size_t gram_get_dimensions(){
-    return DCENY.column_count;
+size_t gram_get_dimensions()
+{
+    return DIM;
 }
-
-// GramColorScheme gram_get_color_scheme_fn(){
-//     return (GramColorScheme) {
-//         .colors_sz =
-//     };
-// }
