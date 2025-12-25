@@ -31,12 +31,19 @@ const GramColorScheme GRAM_DEFAULT_CSCHEME = {
     .colors = (GramColor*)&DEFAULT_COLORS
 };
 
-const char* gram_fns_file_default = "./libgram_update.so";
-const float PLOT_H = HEIGHT * (1 - EXTERNAL_MARGIN_PERCENT);
-const float PLOT_W = WIDHT * (1 - EXTERNAL_MARGIN_PERCENT);
-const float PLOT_EXTERNAL_MARGIN_W = WIDHT * EXTERNAL_MARGIN_PERCENT / 2.;
-const float PLOT_EXTERNAL_MARGIN_H = HEIGHT * EXTERNAL_MARGIN_PERCENT / 2.;
 
+const char* gram_fns_file_default = "./libgram_update.so";
+// const float PLOT_H = s_height * (1 - EXTERNAL_MARGIN_PERCENT);
+// const float PLOT_W = s_width * (1 - EXTERNAL_MARGIN_PERCENT);
+// const float PLOT_EXTERNAL_MARGIN_W = s_width * EXTERNAL_MARGIN_PERCENT / 2.;
+// const float PLOT_EXTERNAL_MARGIN_H = s_height * EXTERNAL_MARGIN_PERCENT / 2.;
+
+static int s_width = WIDHT;
+static int s_height = HEIGHT;
+static float s_plot_h;
+static float s_plot_w;
+static float s_plot_external_margin_w;
+static float s_plot_external_margin_h;
 static size_t s_start_at = 0;
 static size_t s_time = TIME;
 static size_t s_dim = DIM;
@@ -127,13 +134,28 @@ static void update_data()
     s_min *= 1.05;
     s_max *= 1.05;
     s_full = s_max - s_min;
-    s_colw = ((float)PLOT_W) / s_time;
+    s_colw = ((float)s_plot_w) / s_time;
     s_col_w_marg = (s_colw * COL_MARGIN_PERCENT) / 2.;
-    s_plot_center_off = (absf(s_min) / s_full) * PLOT_H;
+    s_plot_center_off = (absf(s_min) / s_full) * s_plot_h;
+}
+
+static void update_window_size_data() {
+    s_plot_h = s_height * (1 - EXTERNAL_MARGIN_PERCENT);
+    s_plot_w = s_width * (1 - EXTERNAL_MARGIN_PERCENT);
+    s_plot_external_margin_w = s_width * EXTERNAL_MARGIN_PERCENT / 2.;
+    s_plot_external_margin_h = s_height * EXTERNAL_MARGIN_PERCENT / 2.;
+    s_colw = ((float)s_plot_w) / s_time;
+    s_col_w_marg = (s_colw * COL_MARGIN_PERCENT) / 2.;
+    s_plot_center_off = (absf(s_min) / s_full) * s_plot_h;
 }
 
 static void update()
 {
+    if(IsWindowResized()) {
+        s_width = GetScreenWidth();
+        s_height = GetScreenHeight();
+        update_window_size_data();
+    }
     if (IsKeyReleased(KEY_R)) {
         TraceLog(LOG_INFO, "RELOADING");
         load();
@@ -174,15 +196,15 @@ static void draw_data()
     for (size_t i = 0; i < s_time; i++) {
         for (size_t d = 0; d < s_dim; d++) {
             float v = s_data[i][d];
-            float screen_h = (v / s_full) * PLOT_H;
+            float screen_h = (v / s_full) * s_plot_h;
             float adjust = v > 0 ? screen_h : 0;
             GramColor color = s_cscheme->colors[d % s_cscheme->colors_sz];
 
             switch (s_draw_type) {
             case GRAM_DRAW_RECT: {
                 Rectangle r = {
-                    .x = (0 + (i * s_colw) + s_col_w_marg) + PLOT_EXTERNAL_MARGIN_W,
-                    .y = (PLOT_H - s_plot_center_off - adjust) + PLOT_EXTERNAL_MARGIN_H,
+                    .x = (0 + (i * s_colw) + s_col_w_marg) + s_plot_external_margin_w,
+                    .y = (s_plot_h - s_plot_center_off - adjust) + s_plot_external_margin_h,
                     .width = s_colw - s_col_w_marg * 2,
                     .height = absf(screen_h),
                 };
@@ -192,8 +214,8 @@ static void draw_data()
             case GRAM_DRAW_COL: {
                 float w = (s_colw - s_col_w_marg * 2) / s_dim;
                 Rectangle r = {
-                    .x = (0 + (i * s_colw) + s_col_w_marg) + PLOT_EXTERNAL_MARGIN_W + (d * w),
-                    .y = (PLOT_H - s_plot_center_off - adjust) + PLOT_EXTERNAL_MARGIN_H,
+                    .x = (0 + (i * s_colw) + s_col_w_marg) + s_plot_external_margin_w + (d * w),
+                    .y = (s_plot_h - s_plot_center_off - adjust) + s_plot_external_margin_h,
                     .width = w,
                     .height = absf(screen_h),
                 };
@@ -202,8 +224,8 @@ static void draw_data()
             } break;
             case GRAM_DRAW_LINE: {
                 Vector2 center = {
-                    .x = (0 + (i * s_colw) + (s_colw / 2.0)) + PLOT_EXTERNAL_MARGIN_W,
-                    .y = PLOT_H - s_plot_center_off + PLOT_EXTERNAL_MARGIN_H - screen_h
+                    .x = (0 + (i * s_colw) + (s_colw / 2.0)) + s_plot_external_margin_w,
+                    .y = s_plot_h - s_plot_center_off + s_plot_external_margin_h - screen_h
                 };
                 DrawCircleV(center, 1.0f, (Color) { color.r, color.g, color.b, color.a });
                 if (i > 0) {
@@ -217,8 +239,8 @@ static void draw_data()
     }
     // 0 line
     DrawLineV(
-        (Vector2) { .x = PLOT_EXTERNAL_MARGIN_W, .y = HEIGHT - PLOT_EXTERNAL_MARGIN_H - s_plot_center_off },
-        (Vector2) { .x = WIDHT - PLOT_EXTERNAL_MARGIN_W, .y = HEIGHT - PLOT_EXTERNAL_MARGIN_H - s_plot_center_off },
+        (Vector2) { .x = s_plot_external_margin_w, .y = s_height - s_plot_external_margin_h - s_plot_center_off },
+        (Vector2) { .x = s_width - s_plot_external_margin_w, .y = s_height - s_plot_external_margin_h - s_plot_center_off },
         (Color) { .r = 255, .b = 255, .g = 255, .a = 255 / 2 });
     if (!isnan(data_point))
         draw_data_point(mouse, data_point);
@@ -227,10 +249,10 @@ static void draw_data()
 static void draw_plot_region()
 {
     Rectangle plot_area = {
-        .x = PLOT_EXTERNAL_MARGIN_W,
-        .y = PLOT_EXTERNAL_MARGIN_H,
-        .width = WIDHT - PLOT_EXTERNAL_MARGIN_W * 2,
-        .height = HEIGHT - PLOT_EXTERNAL_MARGIN_H * 2
+        .x = s_plot_external_margin_w,
+        .y = s_plot_external_margin_h,
+        .width = s_width - s_plot_external_margin_w * 2,
+        .height = s_height - s_plot_external_margin_h * 2
     };
     DrawRectangleRec(plot_area, BLACK);
     if (gram_ext_fns.gram_update)
@@ -246,8 +268,8 @@ static void draw_legend_region()
     if (gram_ext_fns.gram_update) {
         Vector2 sz = MeasureTextEx(GetFontDefault(), zero, 24, 10);
         Vector2 pos = {
-            .x = PLOT_EXTERNAL_MARGIN_W - sz.x * 1.5,
-            .y = HEIGHT - PLOT_EXTERNAL_MARGIN_H - s_plot_center_off - (sz.y / 2.),
+            .x = s_plot_external_margin_w - sz.x * 1.5,
+            .y = HEIGHT - s_plot_external_margin_h - s_plot_center_off - (sz.y / 2.),
         };
         DrawTextEx(GetFontDefault(), zero, pos, 24, 10, RED);
 
@@ -288,9 +310,14 @@ int main(int argc, char** args)
         lua_state = luaL_newstate();
         luaL_openlibs(lua_state);
     }
-    InitWindow(WIDHT, HEIGHT, "gram");
+    InitWindow(s_width, s_height, "gram");
     SetTargetFPS(60);
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
+    SetWindowMinSize(s_width, s_height);
+
     load();
+    update_window_size_data();
+    update();
     update_data();
     while (!WindowShouldClose()) {
         update();
