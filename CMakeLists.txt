@@ -65,7 +65,7 @@ target_link_libraries(gram_csv
     PRIVATE gramcsv
 )
 
-add_library(gram_update SHARED
+add_library(gram_update SHARED EXCLUDE_FROM_ALL
     ${CMAKE_SOURCE_DIR}/src/gram_update.c
 )
 
