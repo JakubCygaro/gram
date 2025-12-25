@@ -32,6 +32,7 @@ static const string_color_pair_t PredefinedColors[] = {
 static lua_State* L = NULL;
 static size_t Dim = 0;
 static size_t StartAt = 0;
+static float Step = 1;
 static const char* LuaSrc = NULL;
 
 char* stolower(const char* str)
@@ -105,7 +106,7 @@ static size_t l_gram_get_time()
     return t;
 }
 
-static void l_gram_update(size_t t, float* row)
+static void l_gram_update(float t, float* row)
 {
     lua_getglobal(L, STRINGIFY(Update));
     if (!lua_isfunction(L, -1)) {
@@ -338,23 +339,34 @@ static int l_load_csv(lua_State* l)
     gram_csv_csv_file_free(csv);
     return 1;
 }
-static size_t l_gram_get_start_at()
+static int l_gram_get_start_at()
 {
+    StartAt = 0;
     lua_getglobal(L, STRINGIFY(StartAt));
     if (!lua_isinteger(L, -1)) {
         TraceLog(LOG_WARNING, STRINGIFY(StartAt) " not set, assuming default of 0");
-        StartAt = 0;
         return StartAt;
     }
     int start_at = lua_tointeger(L, -1);
     lua_settop(L, 0);
-    if (start_at <= 0) {
-        TraceLog(LOG_ERROR, STRINGIFY(StartAt) " has to be a positive non-zero integer");
-        StartAt = 0;
-        return StartAt;
-    }
     StartAt = start_at;
     return StartAt;
+}
+static float l_gram_get_step() {
+    lua_getglobal(L, STRINGIFY(Step));
+    Step = 1;
+    if (!lua_isnumber(L, -1)) {
+        TraceLog(LOG_WARNING, STRINGIFY(Step) " not set, assuming default of 1");
+        return Step;
+    }
+    float step = lua_tonumber(L, -1);
+    lua_settop(L, 0);
+    if(step <= 0.0) {
+        TraceLog(LOG_WARNING, STRINGIFY(Step) " must be greater then zero");
+        return Step;
+    }
+    Step = step;
+    return Step;
 }
 
 void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
@@ -375,6 +387,7 @@ void load_from_lua(const char* src, lua_State* l, GramExtFns* fns)
     fns->gram_get_dimensions = &l_gram_get_dimensions;
     fns->gram_get_start_at = &l_gram_get_start_at;
     fns->gram_update = &l_gram_update;
+    fns->gram_get_step = &l_gram_get_step;
     L = l;
 
     // push the gram functions table

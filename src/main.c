@@ -31,12 +31,7 @@ const GramColorScheme GRAM_DEFAULT_CSCHEME = {
     .colors = (GramColor*)&DEFAULT_COLORS
 };
 
-
 const char* gram_fns_file_default = "./libgram_update.so";
-// const float PLOT_H = s_height * (1 - EXTERNAL_MARGIN_PERCENT);
-// const float PLOT_W = s_width * (1 - EXTERNAL_MARGIN_PERCENT);
-// const float PLOT_EXTERNAL_MARGIN_W = s_width * EXTERNAL_MARGIN_PERCENT / 2.;
-// const float PLOT_EXTERNAL_MARGIN_H = s_height * EXTERNAL_MARGIN_PERCENT / 2.;
 
 static int s_width = WIDHT;
 static int s_height = HEIGHT;
@@ -44,7 +39,8 @@ static float s_plot_h;
 static float s_plot_w;
 static float s_plot_external_margin_w;
 static float s_plot_external_margin_h;
-static size_t s_start_at = 0;
+static int s_start_at = 0;
+static float s_step = 1;
 static size_t s_time = TIME;
 static size_t s_dim = DIM;
 static char* gram_so_file = NULL;
@@ -72,7 +68,8 @@ float absf(float x)
 static void load()
 {
     GramExtFns* ext = &gram_ext_fns;
-    if(ext->gram_fini) ext->gram_fini();
+    if (ext->gram_fini)
+        ext->gram_fini();
     if (s_data) {
         for (size_t i = 0; i < s_time; i++) {
             free(s_data[i]);
@@ -100,7 +97,11 @@ static void load()
     s_time = ext->gram_get_time ? ext->gram_get_time() : TIME;
 
     s_start_at = ext->gram_get_start_at ? ext->gram_get_start_at() : 0;
+
+    s_step = ext->gram_get_step ? ext->gram_get_step() : 1;
+
     s_data = calloc(s_time, sizeof(float*));
+
     for (size_t i = 0; i < s_time; i++) {
         s_data[i] = calloc(s_dim, sizeof(float));
     }
@@ -121,12 +122,12 @@ static void update_data()
     s_min = 0;
     s_max = 0;
 
-    for (size_t t = 0; t < s_time; t++) {
-        gram_ext_fns.gram_update(t + s_start_at, s_data[t]);
+    for (int t = 0; t < (int)s_time; t++) {
+        gram_ext_fns.gram_update((t * s_step) + s_start_at, s_data[t]);
 
         for (size_t d = 0; d < s_dim; d++) {
             s_min = fmin(s_data[t][d], s_min);
-                s_max = fmax(s_data[t][d], s_max);
+            s_max = fmax(s_data[t][d], s_max);
         }
     }
     s_max_v = s_max;
@@ -139,7 +140,8 @@ static void update_data()
     s_plot_center_off = (absf(s_min) / s_full) * s_plot_h;
 }
 
-static void update_window_size_data() {
+static void update_window_size_data()
+{
     s_plot_h = s_height * (1 - EXTERNAL_MARGIN_PERCENT);
     s_plot_w = s_width * (1 - EXTERNAL_MARGIN_PERCENT);
     s_plot_external_margin_w = s_width * EXTERNAL_MARGIN_PERCENT / 2.;
@@ -151,7 +153,7 @@ static void update_window_size_data() {
 
 static void update()
 {
-    if(IsWindowResized()) {
+    if (IsWindowResized()) {
         s_width = GetScreenWidth();
         s_height = GetScreenHeight();
         update_window_size_data();

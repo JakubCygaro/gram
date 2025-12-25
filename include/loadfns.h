@@ -17,11 +17,12 @@
 
 typedef struct {
     void* lib;
-    _DEFINE_FN(void, gram_update, size_t, float*);
+    _DEFINE_FN(void, gram_update, float, float*);
     _DEFINE_FN(int, gram_get_draw_type);
     _DEFINE_FN(size_t, gram_get_time, void);
-    _DEFINE_FN(size_t, gram_get_start_at, void);
+    _DEFINE_FN(int, gram_get_start_at, void);
     _DEFINE_FN(size_t, gram_get_dimensions, void);
+    _DEFINE_FN(float, gram_get_step, void);
     _DEFINE_FN(GramColorScheme*, gram_get_color_scheme, void);
     _DEFINE_FN(void, gram_init, void);
     _DEFINE_FN(void, gram_fini, void);
