@@ -27,7 +27,8 @@ function Update(t)
     return ceny.rok[t+1] - 100
 end
 ```
-<img width="1914" height="1006" alt="image" src="https://github.com/user-attachments/assets/055a2fd1-7af8-40d1-85a9-80c7de791906" />
+
+<img width="1920" height="1004" alt="image" src="https://github.com/user-attachments/assets/23ae30c0-2f03-4e4c-af54-08cf37202c61" />
 
 ## Example Lua script
 
