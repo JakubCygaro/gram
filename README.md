@@ -100,6 +100,6 @@ function Update(t)
     }
 end
 ```
-<img width="1917" height="1008" alt="image" src="https://github.com/user-attachments/assets/6d535a6e-e454-431a-b7fa-ab5528f18451" />
+<img width="1918" height="1006" alt="image" src="https://github.com/user-attachments/assets/33c2b7b6-c61f-4fce-b3e5-ea031270dc8c" />
 
 See lua_demos for more examples.
