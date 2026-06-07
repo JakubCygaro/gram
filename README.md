@@ -5,6 +5,30 @@ Simple graph drawing program for either CSV parsed datasets or dynamically gener
 There is a simple built-in CSV parser that can be used from the lua code, and there is also a simple `gram_csv` CLI program that can transform CSV tables into C header files that can later be compiled into
 shared object files.
 
+## Example CSV data import via Lua
+
+```Lua
+Time = 0
+Dimensions = 0
+Draw = "rect"
+Colors = {
+    "orange",
+}
+
+local ceny;
+
+function Init()
+    ceny = Gram.load_csv("ceny.csv")
+    Time = #ceny.rok
+    Dimensions = ceny.dim
+end
+
+function Update(t)
+    return ceny.rok[t+1] - 100
+end
+```
+<img width="1914" height="1006" alt="image" src="https://github.com/user-attachments/assets/055a2fd1-7af8-40d1-85a9-80c7de791906" />
+
 ## Example Lua script
 
 ```Lua
